@@ -1,0 +1,51 @@
+version: 2
+
+updates:
+  # JS dependencies — runtime + dev.
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    commit-message:
+      prefix: chore
+      include: scope
+    ignore:
+      # @actions/core v3 is ESM-only; we're CommonJS via ncc. Stay on the v2
+      # line (which still receives undici/security patches via http-client@3).
+      - dependency-name: "@actions/core"
+        update-types: ["version-update:semver-major"]
+      # @types/node is pinned to the line matching the action's `node20`
+      # runtime; major bumps would advertise APIs that don't exist there.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      # Group dev-only patch/minor bumps into one PR per week.
+      dev-deps:
+        dependency-type: development
+        update-types:
+          - patch
+          - minor
+
+  # GitHub Actions used in our own workflows (e.g. actions/checkout, setup-node).
+  # We SHA-pin these; Dependabot will bump the SHA + version-comment.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: chore
+      include: scope

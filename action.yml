@@ -1,0 +1,30 @@
+name: Keycard Auth
+description: Exchange a GitHub Actions OIDC token for credentials via Keycard STS.
+author: Keycard Labs, Inc.
+
+branding:
+  icon: shield
+  color: purple
+
+inputs:
+  zone-url:
+    description: Base URL of the Keycard zone (e.g., https://<id>.keycard.cloud).
+    required: true
+  audience:
+    description: Audience to request in the GHA OIDC token. Defaults to zone-url.
+    required: false
+  credentials:
+    description: |
+      YAML list of credentials to fetch. Each entry:
+        - resource: <urn>           # required, Keycard resource identifier
+          type: env | file          # required, distribution primitive
+          scope: <scope>            # optional, OAuth scope to request on the resource
+          env-name: <NAME>          # required when type=env
+          file-path: <path>         # required when type=file
+          file-mode: "0600"         # optional, default 0600. Must be quoted.
+    required: true
+
+runs:
+  using: node20
+  main: dist/index.js
+  post: dist/post/index.js

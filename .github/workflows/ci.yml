@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Cancel in-flight runs on the same branch when a new push lands.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build dist
+        run: npm run build
+
+      - name: Verify dist/ is in sync with src/
+        # JS GitHub Actions ship the bundled dist/ at the SHA consumers pin to.
+        # If a PR changes src/ without rebuilding, dist/ would lag and consumers
+        # would run stale code. This check forces dist/ to be regenerated and
+        # committed in every PR that touches src/.
+        run: |
+          if ! git diff --quiet --exit-code dist/; then
+            echo "::error title=dist out of sync::dist/ is stale. Run 'npm run build' locally and commit the result."
+            echo "---- changed files ----"
+            git --no-pager diff --stat dist/
+            echo "---- full diff ----"
+            git --no-pager diff dist/
+            exit 1
+          fi
+          echo "dist/ is in sync with src/."

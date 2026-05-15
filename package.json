@@ -1,0 +1,36 @@
+{
+  "name": "gha-keycard-auth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GitHub Actions action that exchanges a GHA OIDC token for credentials via Keycard STS.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/keycardai/gha-keycard-auth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/keycardai/gha-keycard-auth/issues"
+  },
+  "homepage": "https://github.com/keycardai/gha-keycard-auth#readme",
+  "main": "dist/index.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "ncc build src/main.ts -o dist --minify --license licenses.txt && ncc build src/post.ts -o dist/post --minify",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@actions/core": "^2.0.3",
+    "js-yaml": "^4.1.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.19.41",
+    "@vercel/ncc": "^0.38.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.6"
+  }
+}
