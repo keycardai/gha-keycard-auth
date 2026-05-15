@@ -1,0 +1,3 @@
+# Default reviewers for every change. CODEOWNERS approvals satisfy the
+# "Require review from Code Owners" branch protection rule on `main`.
+* @keycardai/engineering
