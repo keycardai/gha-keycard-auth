@@ -21,7 +21,7 @@ updates:
       # line (which still receives undici/security patches via http-client@3).
       - dependency-name: "@actions/core"
         update-types: ["version-update:semver-major"]
-      # @types/node is pinned to the line matching the action's `node20`
+      # @types/node is pinned to the line matching the action's `node24`
       # runtime; major bumps would advertise APIs that don't exist there.
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
