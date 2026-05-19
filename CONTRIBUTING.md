@@ -13,7 +13,7 @@ the review loop quick.
 
 You need:
 
-- Node.js **20.x** (matches the `node20` action runtime).
+- Node.js **24.x** (matches the `node24` action runtime).
 - `npm` 10+.
 
 ```sh
