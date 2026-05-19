@@ -23,6 +23,17 @@ GitHub release page.
   Node.js 20 runner is removed on 2026-09-16. Self-hosted runners must have
   Node.js 24 available before pinning to a SHA at or past this release.
 
+### Internal
+
+Contributor-visible only — no impact on consumers pinning by SHA.
+
+- CI: bump pinned `actions/checkout` 4.2.2 → 6.0.2 and
+  `actions/setup-node` 4.1.0 → 6.4.0 (Dependabot, #1, #3).
+- CodeQL workflow: bump pinned `github/codeql-action` 3.35.5 → 4.35.5
+  (Dependabot, #2).
+- Add `.github/CODEOWNERS` requiring review from `@keycardai/engineering`
+  (#4).
+
 ## [0.1.0] - 2026-05-15
 
 First public release.
