@@ -1,6 +1,6 @@
 {
   "name": "gha-keycard-auth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "GitHub Actions action that exchanges a GHA OIDC token for credentials via Keycard STS.",
   "license": "Apache-2.0",

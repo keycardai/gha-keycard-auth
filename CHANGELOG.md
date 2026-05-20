@@ -14,12 +14,14 @@ GitHub release page.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-19
+
 ### Changed
 
 - Action runtime bumped from `node20` to `node24`. GitHub deprecated the
   Node.js 20 runtime; default runs flip to Node.js 24 on 2026-06-02 and the
-  Node.js 20 runner is removed on 2026-09-16. Consumers do not need to
-  change anything beyond pinning to a SHA that includes this release.
+  Node.js 20 runner is removed on 2026-09-16. Self-hosted runners must have
+  Node.js 24 available before pinning to a SHA at or past this release.
 
 ## [0.1.0] - 2026-05-15
 
