@@ -14,6 +14,33 @@ GitHub release page.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-26
+
+### Added
+
+- Provider abstraction (`src/providers/`) for downstream IdP credential
+  brokering. The dispatcher in `main.ts` has no per-provider knowledge;
+  each provider validates its own YAML config and returns a closure that
+  distributes the resulting credential. Adding a new provider is one file
+  under `src/providers/` plus one line in `src/providers/index.ts`.
+- `pulumi` as the first provider: the action performs a two-hop exchange
+  where Keycard STS issues a zone JWT with `aud=urn:pulumi:org:<org>` and
+  the action then exchanges it at Pulumi's `/api/oauth/token` (RFC 8693
+  token exchange) for a Pulumi access token. Pulumi org admins configure
+  a single OIDC issuer trust (the Keycard zone) instead of per-repo
+  GitHub trust configs.
+
+  ```yaml
+  - uses: keycardai/gha-keycard-auth@<sha>
+    with:
+      zone-url: https://<id>.keycard.cloud
+      credentials: |
+        - resource: urn:pulumi:org:<org>
+          type: pulumi
+          pulumi:
+            organization: <org>
+  ```
+
 ## [0.2.0] - 2026-05-19
 
 ### Changed
@@ -67,5 +94,7 @@ Inline mitigation comments in `src/` document the threats this action
 defends against. CodeQL analysis runs on push, PR, and weekly. Vulnerability
 reports: security@keycard.ai (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/keycardai/gha-keycard-auth/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/keycardai/gha-keycard-auth/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.3.0
+[0.2.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.2.0
 [0.1.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.1.0
