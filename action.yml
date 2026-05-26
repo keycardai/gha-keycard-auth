@@ -16,12 +16,14 @@ inputs:
   credentials:
     description: |
       YAML list of credentials to fetch. Each entry:
-        - resource: <urn>           # required, Keycard resource identifier
-          type: env | file          # required, distribution primitive
-          scope: <scope>            # optional, OAuth scope to request on the resource
-          env-name: <NAME>          # required when type=env
-          file-path: <path>         # required when type=file
-          file-mode: "0600"         # optional, default 0600. Must be quoted.
+        - resource: <urn>                # required, Keycard resource identifier
+          type: env | file | <provider>  # required; see README for provider list
+          scope: <scope>                 # optional, OAuth scope to request on the resource
+          env-name: <NAME>               # required when type=env; optional override for provider types
+          file-path: <path>              # required when type=file
+          file-mode: "0600"              # optional, default 0600. Must be quoted.
+          <provider>:                    # required when type=<provider>; see README for fields
+            ...
     required: true
 
 runs:

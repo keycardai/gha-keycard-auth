@@ -58,6 +58,10 @@ src/
   exporters/
     env.ts         # type: env  → core.exportVariable + setSecret
     file.ts        # type: file → O_NOFOLLOW write under credentials root
+  providers/
+    types.ts       # Provider interface (validate + exchange-returning-closure)
+    index.ts       # PROVIDERS registry + lookup helpers
+    pulumi.ts      # pulumi provider (Keycard JWT → Pulumi access token via RFC 8693)
   *.test.ts        # vitest unit tests, colocated with sources
 dist/              # bundled output — committed, regenerated on every PR
 action.yml         # action manifest (inputs, runtime)
@@ -87,6 +91,57 @@ Run the full suite before pushing:
 ```sh
 npm run typecheck && npm test
 ```
+
+### Adding a provider
+
+A **provider** brokers credentials from the Keycard zone JWT to a downstream
+identity provider (Pulumi, AWS, GCP, …) and distributes the resulting
+credential into the workflow environment. Providers ship inside this action —
+there is no runtime plugin mechanism. Adding one is a PR.
+
+The contract (`src/providers/types.ts`) is intentionally narrow:
+
+```ts
+interface Provider {
+  type: string;                                      // YAML `type:` value
+  validate(config: unknown, index: number): void;    // parse-time validation
+  exchange(args: {
+    keycardJwt: string;
+    config: Record<string, unknown>;
+    envName?: string;
+  }): Promise<() => void>;                           // returns the distribute closure
+}
+```
+
+No type parameters. Each provider validates and narrows its own config
+internally. The closure returned by `exchange` runs in `orchestrate.ts`
+Phase 2 — invoke `core.exportVariable`, `exportFile`, whatever your
+provider needs.
+
+To add a new provider:
+
+1. Create `src/providers/<name>.ts` implementing the `Provider` interface.
+   Use `src/providers/pulumi.ts` as a template. Validation throws with
+   `credentials[${index}].<name>.<field>`-shaped error messages so the
+   workflow author sees which entry is bad.
+2. Register it in `src/providers/index.ts`:
+   ```ts
+   import { newProvider } from "./<name>";
+   export const PROVIDERS: Record<string, Provider> = {
+     pulumi: pulumiProvider,
+     <name>: newProvider,
+   };
+   ```
+3. Add colocated tests (`src/providers/<name>.test.ts`). Network calls
+   take a `fetchImpl` arg; env-export tests stub `GITHUB_ENV` to a tmp
+   file (see `pulumi.test.ts`).
+4. Update `README.md`'s providers table and add a `### <name>` subsection
+   documenting the YAML config block and any downstream-side setup.
+5. `npm run build` to refresh `dist/`.
+
+No changes to `main.ts`, `inputs.ts`, `orchestrate.ts`, or `action.yml`
+should be required. If you find yourself wanting to touch those, the
+provider interface probably needs a discussion first — open an issue.
 
 ### Security-sensitive changes
 

@@ -1,6 +1,17 @@
 import type { CredentialSpec, Inputs } from "./inputs";
 
 /**
+ * Outcome of a Phase 1 exchange. Either:
+ *   - "raw" — a single access token (env / file primitive variants), OR
+ *   - "bundle" — a closure produced by the provider's exchange that, when
+ *     invoked, distributes the resulting credential into the workflow
+ *     environment. Phase 2 just invokes it.
+ */
+export type ExchangeOutcome =
+  | { kind: "raw"; token: string }
+  | { kind: "bundle"; providerType: string; distribute: () => void };
+
+/**
  * Pluggable seam between orchestration logic and side effects, so the
  * atomic-semantics behavior (M2) can be tested without hitting real
  * STS endpoints, real OIDC, or real env/disk.
@@ -13,8 +24,8 @@ export interface OrchestrateDeps {
     oidcToken: string;
     resource: string;
     scope?: string;
-  }) => Promise<string>;
-  applyCredential: (spec: CredentialSpec, accessToken: string) => void;
+  }) => Promise<ExchangeOutcome>;
+  applyCredential: (spec: CredentialSpec, outcome: ExchangeOutcome) => void;
   log: (message: string) => void;
 }
 
@@ -49,7 +60,7 @@ export async function orchestrate(
           resource: spec.resource,
           scope: spec.scope,
         })
-        .then((accessToken) => ({ spec, accessToken })),
+        .then((outcome) => ({ spec, outcome })),
     ),
   );
 
@@ -67,7 +78,7 @@ export async function orchestrate(
   // Phase 2: every exchange succeeded, safe to apply exporters.
   for (const result of results) {
     if (result.status === "fulfilled") {
-      deps.applyCredential(result.value.spec, result.value.accessToken);
+      deps.applyCredential(result.value.spec, result.value.outcome);
     }
   }
 

@@ -167,6 +167,184 @@ describe("parseInputs", () => {
     expect(() => parseInputs()).toThrow(/type/);
   });
 
+  describe("type: pulumi", () => {
+    it("parses with default env-name PULUMI_ACCESS_TOKEN and default token-type", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  pulumi:
+    organization: foobar
+`,
+      );
+      const [cred] = parseInputs().credentials;
+      // Provider-typed creds carry the raw config block; the provider
+      // re-narrows it at exchange time. envName is undefined when the
+      // workflow author doesn't override; the provider supplies its own
+      // default during exchange.
+      expect(cred).toEqual({
+        resource: "urn:pulumi:org:foobar",
+        scope: undefined,
+        type: "pulumi",
+        envName: undefined,
+        config: {
+          organization: "foobar",
+        },
+      });
+    });
+
+    it("allows env-name override", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  env-name: PULUMI_TOKEN_STAGING
+  pulumi:
+    organization: foobar
+`,
+      );
+      const [cred] = parseInputs().credentials;
+      expect(cred.type).toBe("pulumi");
+      if (cred.type === "pulumi") {
+        expect(cred.envName).toBe("PULUMI_TOKEN_STAGING");
+      }
+    });
+
+    it("applies env-name reserved-name validation to overrides", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  env-name: PATH
+  pulumi:
+    organization: foobar
+`,
+      );
+      expect(() => parseInputs()).toThrow(/reserved/);
+    });
+
+    it("rejects file-path on type: pulumi", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  file-path: /tmp/pulumi-token
+  pulumi:
+    organization: foobar
+`,
+      );
+      expect(() => parseInputs()).toThrow(/file-path is not valid for type "pulumi"/);
+    });
+
+    it("rejects file-mode on type: pulumi", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  file-mode: "0600"
+  pulumi:
+    organization: foobar
+`,
+      );
+      expect(() => parseInputs()).toThrow(/file-mode is not valid for type "pulumi"/);
+    });
+
+    it("supports scope on type: pulumi", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  scope: org:read
+  pulumi:
+    organization: foobar
+`,
+      );
+      const [cred] = parseInputs().credentials;
+      expect(cred.scope).toBe("org:read");
+    });
+
+    it("rejects missing pulumi block", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+`,
+      );
+      expect(() => parseInputs()).toThrow(/pulumi is required/);
+    });
+
+    it("rejects missing pulumi.organization", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  pulumi: {}
+`,
+      );
+      expect(() => parseInputs()).toThrow(/organization/);
+    });
+
+    it("rejects invalid pulumi.organization name", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  pulumi:
+    organization: NotValid
+`,
+      );
+      expect(() => parseInputs()).toThrow(/not a valid Pulumi organization name/);
+    });
+
+    it("rejects unknown token-type at parse time (via provider.validate)", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  pulumi:
+    organization: foobar
+    token-type: bogus
+`,
+      );
+      expect(() => parseInputs()).toThrow(/token-type must be one of/);
+    });
+
+    it("rejects http:// pulumi.cloud-url", () => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:pulumi:org:foobar
+  type: pulumi
+  pulumi:
+    organization: foobar
+    cloud-url: http://api.pulumi.com
+`,
+      );
+      expect(() => parseInputs()).toThrow(/cloud-url must use https/);
+    });
+  });
+
   it("rejects env type without env-name", () => {
     setInput("zone-url", "https://zone.keycard.cloud");
     setInput(
