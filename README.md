@@ -44,6 +44,43 @@ credentials: |
     file-mode: "0400"          # must be quoted — see file-mode notes below
 ```
 
+## Providers
+
+Beyond raw env/file distribution, the action can broker credentials to specific downstream identity providers. A **provider** takes the Keycard zone JWT, performs the second-hop exchange with the downstream IdP (e.g. RFC 8693 token exchange to Pulumi), and exports the resulting credential into the workflow's environment. The workflow author writes one step; the Keycard zone controls the JWT's claims; the downstream's allow policy controls what the resulting credential can do.
+
+**Supported providers:**
+
+| Type | Downstream | Default output env var |
+|---|---|---|
+| `pulumi` | Pulumi Cloud (RFC 8693 to `/api/oauth/token`) | `PULUMI_ACCESS_TOKEN` |
+
+### `pulumi`
+
+```yaml
+steps:
+  - uses: keycardai/gha-keycard-auth@<sha>
+    with:
+      zone-url: https://<id>.keycard.cloud
+      credentials: |
+        - resource: urn:pulumi:org:keycardlabs
+          type: pulumi
+          pulumi:
+            organization: keycardlabs
+  - run: pulumi preview --stack acme/prod
+```
+
+| Field | Required | Notes |
+|---|---|---|
+| `pulumi.organization` | yes | Pulumi organization the issued token is scoped to. Becomes `audience=urn:pulumi:org:<org>` in the exchange request. |
+| `pulumi.token-type` | no | `organization` (default), `team`, or `personal`. Maps to `urn:pulumi:token-type:access_token:<value>`. |
+| `pulumi.cloud-url` | no | Pulumi API origin, default `https://api.pulumi.com`. Must be https; path is stripped. |
+
+Downstream setup: register the Keycard zone as an OIDC issuer in Pulumi Cloud (Settings → Access Management → OIDC Issuers), and add an allow policy matching `aud=urn:pulumi:org:<org>` plus the `sub`/`client_id` claim shape Keycard mints for your workflows. This replaces `pulumi/auth-actions` in workflows that want credential issuance + audit flowing through Keycard.
+
+### Adding a provider
+
+Providers ship inside this action — there is no runtime plugin mechanism. See [CONTRIBUTING.md](./CONTRIBUTING.md#adding-a-provider) for the step-by-step.
+
 ## Inputs
 
 | Input | Required | Description |
@@ -57,11 +94,12 @@ credentials: |
 | Field | Required | Notes |
 |---|---|---|
 | `resource` | yes | Keycard resource URN. |
-| `type` | yes | `env` or `file`. |
+| `type` | yes | `env`, `file`, or a [provider type](#providers). |
 | `scope` | no | OAuth scope to request on the resource. |
-| `env-name` | when `type=env` | Env var to set. Must match `^[A-Z_][A-Z0-9_]*$` and is not allowed to be a reserved name (e.g. `PATH`, `NODE_OPTIONS`, `LD_PRELOAD`, anything starting with `GITHUB_`/`RUNNER_`/`ACTIONS_`/`INPUT_`). |
+| `env-name` | when `type=env` | Env var to set. Must match `^[A-Z_][A-Z0-9_]*$` and is not allowed to be a reserved name (e.g. `PATH`, `NODE_OPTIONS`, `LD_PRELOAD`, anything starting with `GITHUB_`/`RUNNER_`/`ACTIONS_`/`INPUT_`). Providers also accept this field as an optional override of their default env var. |
 | `file-path` | when `type=file` | Path on disk. Resolved against an action-managed directory under `$RUNNER_TEMP`; absolute paths and `..` traversal are rejected. |
 | `file-mode` | no | Octal mode for `file`, default `0600`. **Must be a quoted string** (`"0600"`) — unquoted YAML coerces it to a decimal integer. Must be owner-only; group/world bits are rejected (so `0640`, `0644`, etc. fail). |
+| `<provider>` | when `type=<provider>` | Provider-specific config block. See [Providers](#providers). |
 
 ## Setup
 

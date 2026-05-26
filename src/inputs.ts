@@ -1,5 +1,22 @@
 import * as core from "@actions/core";
 import * as yaml from "js-yaml";
+import { getProvider, isProviderType, PROVIDERS } from "./providers";
+
+/**
+ * Provider-typed credentials share a single generic spec shape. The
+ * provider validates its own `config` block; nothing else in the
+ * system knows or needs to know what's in it.
+ */
+export interface ProviderCredentialSpec {
+  resource: string;
+  scope?: string;
+  /** Provider key — must be a member of PROVIDERS. */
+  type: string;
+  /** Optional override for the provider's default output env-var. */
+  envName?: string;
+  /** Provider-specific YAML block, opaque to everything outside the provider. */
+  config: Record<string, unknown>;
+}
 
 export type CredentialSpec =
   | {
@@ -14,7 +31,8 @@ export type CredentialSpec =
       type: "file";
       filePath: string;
       fileMode: string;
-    };
+    }
+  | ProviderCredentialSpec;
 
 export interface Inputs {
   zoneUrl: string;
@@ -122,10 +140,48 @@ function parseCredential(entry: unknown, index: number): CredentialSpec {
       return { resource, scope, type: "file", filePath, fileMode };
     }
     default:
+      if (isProviderType(type)) {
+        return parseProviderCredential(type, entry, resource, scope, index);
+      }
       throw new Error(
-        `credentials[${index}].type must be "env" or "file" (got "${type}")`,
+        `credentials[${index}].type must be "env", "file", or one of [${Object.keys(PROVIDERS).join(", ")}] (got "${type}")`,
       );
   }
+}
+
+/**
+ * Parse a provider-typed credential entry. The provider validates its
+ * own config block; everything else here is cross-cutting (resource,
+ * scope, env-name override, rejecting fields that don't apply).
+ */
+function parseProviderCredential(
+  type: string,
+  entry: Record<string, unknown>,
+  resource: string,
+  scope: string | undefined,
+  index: number,
+): ProviderCredentialSpec {
+  const provider = getProvider(type);
+  // Provider-specific config block lives under a key matching the provider
+  // type (e.g. `pulumi:` for type: pulumi).
+  const rawConfig = entry[type];
+  provider.validate(rawConfig, index);
+  // After validate, the block is known to be a record. We pass the
+  // unvalidated value through; the provider re-narrows it inside exchange.
+  const config: Record<string, unknown> = isRecord(rawConfig) ? rawConfig : {};
+
+  const rawEnvName = optionalStringField(entry, "env-name", index);
+  if (rawEnvName) validateEnvName(rawEnvName, index);
+  rejectField(entry, "file-path", type, index);
+  rejectField(entry, "file-mode", type, index);
+
+  return {
+    resource,
+    scope,
+    type,
+    envName: rawEnvName,
+    config,
+  };
 }
 
 /**
@@ -276,4 +332,17 @@ function optionalStringField(
     throw new Error(`credentials[${index}].${key} must be a non-empty string when present`);
   }
   return v;
+}
+
+function rejectField(
+  entry: Record<string, unknown>,
+  key: string,
+  type: string,
+  index: number,
+): void {
+  if (entry[key] !== undefined) {
+    throw new Error(
+      `credentials[${index}].${key} is not valid for type "${type}"`,
+    );
+  }
 }

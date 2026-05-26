@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import { orchestrate, type OrchestrateDeps } from "./orchestrate";
+import { orchestrate, type OrchestrateDeps, type ExchangeOutcome } from "./orchestrate";
 import type { CredentialSpec, Inputs } from "./inputs";
+
+const RAW: ExchangeOutcome = { kind: "raw", token: "ACCESS_TOKEN" };
 
 function makeDeps(overrides: Partial<OrchestrateDeps> = {}): OrchestrateDeps {
   return {
     discoverTokenEndpoint: vi.fn().mockResolvedValue("https://zone.keycard.cloud/oauth/2/token"),
     getOidcToken: vi.fn().mockResolvedValue("OIDC_JWT"),
-    exchange: vi.fn().mockResolvedValue("ACCESS_TOKEN"),
+    exchange: vi.fn().mockResolvedValue(RAW),
     applyCredential: vi.fn(),
     log: vi.fn(),
     ...overrides,
@@ -45,8 +47,8 @@ describe("orchestrate", () => {
     const deps = makeDeps({ applyCredential: apply });
     await orchestrate(inputs([envCred, envCred2]), deps);
     expect(apply).toHaveBeenCalledTimes(2);
-    expect(apply).toHaveBeenCalledWith(envCred, "ACCESS_TOKEN");
-    expect(apply).toHaveBeenCalledWith(envCred2, "ACCESS_TOKEN");
+    expect(apply).toHaveBeenCalledWith(envCred, RAW);
+    expect(apply).toHaveBeenCalledWith(envCred2, RAW);
   });
 
   it("applies NO credentials if ANY exchange fails (M2)", async () => {
@@ -55,7 +57,7 @@ describe("orchestrate", () => {
       if (resource === "urn:example:second") {
         throw new Error("invalid_client: not configured");
       }
-      return "ACCESS_TOKEN";
+      return RAW;
     });
     const deps = makeDeps({ exchange, applyCredential: apply });
     await expect(
@@ -89,7 +91,7 @@ describe("orchestrate", () => {
       maxConcurrent = Math.max(maxConcurrent, inFlight);
       await new Promise((r) => setTimeout(r, 5));
       inFlight--;
-      return "ACCESS_TOKEN";
+      return RAW;
     });
     const deps = makeDeps({ exchange });
     await orchestrate(inputs([envCred, envCred2, envCred3]), deps);
@@ -98,10 +100,10 @@ describe("orchestrate", () => {
 
   it("does not call applyCredential before all exchanges resolve (M2)", async () => {
     const apply = vi.fn();
-    let resolveSlowExchange: (value: string) => void = () => {};
+    let resolveSlowExchange: (value: ExchangeOutcome) => void = () => {};
     const exchange = vi.fn(async ({ resource }) => {
       if (resource === "urn:fly:foo") {
-        return new Promise<string>((res) => {
+        return new Promise<ExchangeOutcome>((res) => {
           resolveSlowExchange = res;
         });
       }
@@ -115,7 +117,7 @@ describe("orchestrate", () => {
     // for the slow one as soon as it resolves. With atomic semantics, we
     // wait for ALL phase-1 promises before applying any.
     await new Promise((r) => setTimeout(r, 10));
-    resolveSlowExchange("ACCESS_TOKEN");
+    resolveSlowExchange(RAW);
 
     await expect(promise).rejects.toThrow();
     expect(apply).not.toHaveBeenCalled();
