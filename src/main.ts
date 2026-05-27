@@ -41,14 +41,32 @@ function isFileSpec(
 }
 
 async function run(): Promise<void> {
+  // Parse inputs OUTSIDE the soft-fail wrapper. A malformed action
+  // invocation (bad zone-url, missing credentials, etc.) is a workflow
+  // author error, not a Keycard availability problem — failing loudly
+  // is correct even when allow-failure would otherwise be in effect.
+  // parseAllowFailure itself rejecting an invalid value (e.g. "yes")
+  // also surfaces here, before the wrapper.
   const inputs = parseInputs();
-  await orchestrate(inputs, {
-    discoverTokenEndpoint,
-    getOidcToken: getGithubOidcToken,
-    exchange: makeExchange(inputs),
-    applyCredential,
-    log: (message) => core.info(message),
-  });
+
+  try {
+    await orchestrate(inputs, {
+      discoverTokenEndpoint,
+      getOidcToken: getGithubOidcToken,
+      exchange: makeExchange(inputs),
+      applyCredential,
+      log: (message) => core.info(message),
+    });
+  } catch (err) {
+    if (!inputs.allowFailure) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    core.warning(
+      `Keycard exchange failed; allow-failure is enabled so the step ` +
+        `will succeed without exporting credentials. Downstream steps ` +
+        `must detect missing credentials and route to a fallback. ` +
+        `Underlying error: ${message}`,
+    );
+  }
 }
 
 /**

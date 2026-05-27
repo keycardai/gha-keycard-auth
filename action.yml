@@ -25,6 +25,20 @@ inputs:
           <provider>:                    # required when type=<provider>; see README for fields
             ...
     required: true
+  allow-failure:
+    description: |
+      Break-glass. When "true", any failure during discovery, OIDC mint,
+      token exchange, or credential application is logged as a warning
+      and the step exits successfully (no credentials exported). The
+      default is "false", which fails the step on any error.
+
+      Intended for declared Keycard outages where a downstream step can
+      detect the absence of the expected credential (e.g. PULUMI_ACCESS_TOKEN
+      unset) and route to an alternate auth path. Do not enable in
+      steady state — it suppresses legitimate authorization decisions
+      (e.g. Keycard rejecting a request) along with availability errors.
+    required: false
+    default: "false"
 
 runs:
   using: node24

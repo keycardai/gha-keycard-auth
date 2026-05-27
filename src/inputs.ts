@@ -38,12 +38,14 @@ export interface Inputs {
   zoneUrl: string;
   audience: string;
   credentials: CredentialSpec[];
+  allowFailure: boolean;
 }
 
 export function parseInputs(): Inputs {
   const zoneUrl = parseZoneUrl(required("zone-url"));
   const audience = parseAudience(core.getInput("audience").trim(), zoneUrl);
   const credentialsRaw = required("credentials");
+  const allowFailure = parseAllowFailure(core.getInput("allow-failure").trim());
 
   let parsed: unknown;
   try {
@@ -67,7 +69,24 @@ export function parseInputs(): Inputs {
 
   const credentials = parsed.map((entry, i) => parseCredential(entry, i));
 
-  return { zoneUrl, audience, credentials };
+  return { zoneUrl, audience, credentials, allowFailure };
+}
+
+/**
+ * Parse the allow-failure break-glass flag. Empty string (from an unset
+ * `vars.KEYCARD_ALLOW_FAILURE` wired into the input) and the literal "false"
+ * both resolve to false; only the literal "true" enables soft-fail. Reject
+ * anything else loudly so a typo like "yes" / "1" / "True" doesn't silently
+ * leave the bypass disabled when an operator thinks they enabled it.
+ */
+function parseAllowFailure(raw: string): boolean {
+  if (raw === "" || raw === "false") return false;
+  if (raw === "true") return true;
+  throw new Error(
+    `allow-failure must be "true" or "false" (got "${raw}"). ` +
+      `Typically sourced from an org-level Actions variable, e.g. ` +
+      `allow-failure: \${{ vars.KEYCARD_ALLOW_FAILURE }}.`,
+  );
 }
 
 /**
