@@ -14,12 +14,14 @@ describe("parseInputs", () => {
     clearInput("zone-url");
     clearInput("audience");
     clearInput("credentials");
+    clearInput("allow-failure");
   });
 
   afterEach(() => {
     clearInput("zone-url");
     clearInput("audience");
     clearInput("credentials");
+    clearInput("allow-failure");
   });
 
   it("parses env credential", () => {
@@ -576,6 +578,56 @@ describe("parseInputs", () => {
     it("accepts a leading underscore", () => {
       const inputs = withEnvName("_PRIVATE_VAR")() as { credentials: { envName?: string }[] };
       expect(inputs.credentials[0].envName).toBe("_PRIVATE_VAR");
+    });
+  });
+
+  describe("allow-failure", () => {
+    function setBaseInputs(): void {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput(
+        "credentials",
+        `
+- resource: urn:fly:app:foo:deploy-token
+  type: env
+  env-name: FLY_API_TOKEN
+`,
+      );
+    }
+
+    it("defaults to false when input is unset", () => {
+      setBaseInputs();
+      expect(parseInputs().allowFailure).toBe(false);
+    });
+
+    it("treats empty string as false (the unset-vars case)", () => {
+      // vars.KEYCARD_ALLOW_FAILURE wired into the input but unset on the
+      // org renders as the empty string at action invocation time. That
+      // must mean "off", not "error".
+      setBaseInputs();
+      setInput("allow-failure", "");
+      expect(parseInputs().allowFailure).toBe(false);
+    });
+
+    it("treats literal \"false\" as false", () => {
+      setBaseInputs();
+      setInput("allow-failure", "false");
+      expect(parseInputs().allowFailure).toBe(false);
+    });
+
+    it("treats literal \"true\" as true", () => {
+      setBaseInputs();
+      setInput("allow-failure", "true");
+      expect(parseInputs().allowFailure).toBe(true);
+    });
+
+    it("rejects other truthy spellings loudly", () => {
+      // A typo here would silently leave bypass disabled during an
+      // outage. Reject so the operator sees the error immediately.
+      setBaseInputs();
+      for (const bad of ["yes", "1", "True", "TRUE", "on"]) {
+        setInput("allow-failure", bad);
+        expect(() => parseInputs()).toThrow(/allow-failure must be/);
+      }
     });
   });
 });

@@ -20,6 +20,7 @@ function inputs(creds: CredentialSpec[]): Inputs {
     zoneUrl: "https://zone.keycard.cloud",
     audience: "https://zone.keycard.cloud",
     credentials: creds,
+    allowFailure: false,
   };
 }
 
