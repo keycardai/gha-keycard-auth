@@ -14,6 +14,43 @@ GitHub release page.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-27
+
+### Added
+
+- `allow-failure` input (default `"false"`). When set to `"true"`, any
+  failure in discovery, OIDC mint, exchange, or credential application
+  is logged as a `::warning::` annotation and the step exits
+  successfully without exporting credentials. Intended as the
+  Keycard-side half of a break-glass mechanism: a downstream step
+  detects the absence of the expected credential (e.g.
+  `PULUMI_ACCESS_TOKEN` unset) and routes to an alternate auth path.
+
+  Typical wiring sources the flag from an org-level Actions variable so
+  flipping a single value in GitHub settings activates the bypass
+  across every consuming workflow with zero code change:
+
+  ```yaml
+  - uses: keycardai/gha-keycard-auth@<sha>
+    with:
+      zone-url: ${{ vars.KEYCARD_ZONE_URL }}
+      allow-failure: ${{ vars.KEYCARD_ALLOW_FAILURE }}
+      credentials: |
+        # ...
+  ```
+
+  Empty string (the unset-org-variable case) and the literal `"false"`
+  both resolve to off; any other value other than `"true"` is rejected
+  to surface typos like `"yes"` / `"1"` immediately rather than
+  silently leaving bypass disabled when an operator thinks they
+  enabled it.
+
+### Notes
+
+- `allow-failure` suppresses authorization decisions (e.g. Keycard
+  rejecting a request) along with availability errors. Per the design
+  agreed in the rollout discussion, do not enable in steady state.
+
 ## [0.3.0] - 2026-05-26
 
 ### Added
@@ -94,7 +131,8 @@ Inline mitigation comments in `src/` document the threats this action
 defends against. CodeQL analysis runs on push, PR, and weekly. Vulnerability
 reports: security@keycard.ai (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/keycardai/gha-keycard-auth/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/keycardai/gha-keycard-auth/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.4.0
 [0.3.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.3.0
 [0.2.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.2.0
 [0.1.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.1.0
