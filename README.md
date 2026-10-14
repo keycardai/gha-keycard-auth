@@ -118,3 +118,9 @@ uses: keycardai/gha-keycard-auth@<40-char-sha>   # v0.1.0
 ## Contributing
 
 External contributions welcome via forks and pull requests. See [CONTRIBUTING](./CONTRIBUTING.md). For vulnerabilities see [SECURITY](./SECURITY.md) — please do not file public issues for security reports.
+
+## License
+
+Apache-2.0 — see [LICENSE](./LICENSE) and, for the copyright notice, [NOTICE](./NOTICE).
+The Keycard name and logo are trademarks; [TRADEMARKS.md](./TRADEMARKS.md) states how
+they may be used.
