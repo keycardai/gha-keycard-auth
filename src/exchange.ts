@@ -34,6 +34,7 @@ export async function exchangeForResource(args: {
   oidcToken: string;
   resource: string;
   scope?: string;
+  clientId?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }): Promise<string> {
@@ -49,6 +50,9 @@ export async function exchangeForResource(args: {
   });
   if (args.scope) {
     body.set("scope", args.scope);
+  }
+  if (args.clientId) {
+    body.set("client_id", args.clientId);
   }
 
   const resp = await fetchImpl(args.tokenEndpoint, {

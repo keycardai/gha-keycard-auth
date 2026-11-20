@@ -59,6 +59,27 @@ describe("exchangeForResource", () => {
     expect(body.get("client_assertion")).toBe("OIDC_JWT");
     expect(body.get("resource")).toBe("urn:fly:app:foo:deploy-token");
     expect(body.get("scope")).toBeNull();
+    expect(body.get("client_id")).toBeNull();
+  });
+
+  it.each([undefined, "", "client-123"])("preserves the form body with clientId=%j", async (clientId) => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ access_token: "x" }),
+    });
+    await exchangeForResource({
+      tokenEndpoint: "https://zone.keycard.cloud/oauth/2/token",
+      oidcToken: "OIDC_JWT",
+      resource: "urn:example:resource",
+      scope: "read write",
+      clientId,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+    const original = "grant_type=client_credentials&client_assertion_type=urn%3Aietf%3Aparams%3Aoauth%3Aclient-assertion-type%3Ajwt-bearer&client_assertion=OIDC_JWT&resource=urn%3Aexample%3Aresource&scope=read+write";
+    expect(fetchImpl.mock.calls[0][1].body).toBe(
+      original + (clientId ? "&client_id=client-123" : ""),
+    );
   });
 
   it("forwards scope when provided", async () => {
