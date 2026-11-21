@@ -48,3 +48,56 @@ jobs:
           ACCEPTANCE_TOKEN: ${{ env.ACCEPTANCE_V1_TOKEN }}
           EXPECTED_ISSUER: ${{ steps.provision.outputs.zone_issuer }}
           EXPECTED_RESOURCE: ${{ steps.provision.outputs.resource_identifier }}
+
+      - name: Exchange with custom audience
+        uses: ./
+        with:
+          zone-url: ${{ steps.provision.outputs.zone_issuer }}
+          client-id: ${{ steps.provision.outputs.custom_client_id }}
+          audience: ${{ steps.provision.outputs.custom_audience }}
+          credentials: |
+            - resource: ${{ steps.provision.outputs.resource_identifier }}
+              type: env
+              env-name: ACCEPTANCE_CUSTOM_TOKEN
+
+      - name: Check custom-audience token
+        run: node acceptance/assert-token.mjs
+        env:
+          ACCEPTANCE_TOKEN: ${{ env.ACCEPTANCE_CUSTOM_TOKEN }}
+          EXPECTED_ISSUER: ${{ steps.provision.outputs.zone_issuer }}
+          EXPECTED_RESOURCE: ${{ steps.provision.outputs.resource_identifier }}
+
+      - name: Exchange with default audience
+        uses: ./
+        with:
+          zone-url: ${{ steps.provision.outputs.zone_issuer }}
+          client-id: ${{ steps.provision.outputs.default_client_id }}
+          credentials: |
+            - resource: ${{ steps.provision.outputs.resource_identifier }}
+              type: env
+              env-name: ACCEPTANCE_DEFAULT_TOKEN
+
+      - name: Check default-audience token
+        run: node acceptance/assert-token.mjs
+        env:
+          ACCEPTANCE_TOKEN: ${{ env.ACCEPTANCE_DEFAULT_TOKEN }}
+          EXPECTED_ISSUER: ${{ steps.provision.outputs.zone_issuer }}
+          EXPECTED_RESOURCE: ${{ steps.provision.outputs.resource_identifier }}
+
+      - name: Reject custom credential without its audience
+        id: wrong-audience
+        continue-on-error: true
+        uses: ./
+        with:
+          zone-url: ${{ steps.provision.outputs.zone_issuer }}
+          client-id: ${{ steps.provision.outputs.custom_client_id }}
+          credentials: |
+            - resource: ${{ steps.provision.outputs.resource_identifier }}
+              type: env
+              env-name: ACCEPTANCE_WRONG_AUDIENCE_TOKEN
+
+      - name: Check audience mismatch failed
+        if: steps.wrong-audience.outcome != 'failure'
+        run: |
+          echo "Expected the audience mismatch exchange to fail" >&2
+          exit 1
