@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import test from "node:test";
+import { test } from "vitest";
 
 function run(code) {
   return spawnSync("bash", ["-c", `source acceptance/zone.sh\n${code}`], { encoding: "utf8" });
