@@ -12,6 +12,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The App token can bypass the main ruleset. Mint it only on push to main,
+  # never on pull_request. This job runs code already merged via reviewed PRs.
+  # Checkout uses persist-credentials: false. Only the bump step receives the
+  # token, and the App is limited to contents:write.
   release:
     if: "!startsWith(github.event.head_commit.message, 'bump:')"
     runs-on: ubuntu-latest
