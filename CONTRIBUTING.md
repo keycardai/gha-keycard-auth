@@ -30,9 +30,11 @@ flag prevents accidental `npm publish` while keeping the repo public.
 
 The `Acceptance tests` workflow needs the `KEYCARD_CLIENT_ID` and
 `KEYCARD_CLIENT_SECRET` secrets for a service account with Management API access
-to the test zone. Set repository variables `KEYCARD_TOKEN_ENDPOINT` to its OAuth
-client credentials token endpoint, `KEYCARD_API_URL` to the Management API base
-URL including `/mgmt/v1`, and `KEYCARD_ZONE_ID` to the fixed test zone ID.
+to zone `fdqsqy07r9m1t80d7ipejmtpw4`. The workflow sets `KEYCARD_ENDPOINT` to
+`https://api.keycard.ai` and `KEYCARD_ZONE_ID` to that zone ID. Local runs can
+override `KEYCARD_ENDPOINT`, which defaults to `https://api.keycard.ai`, and must
+set `KEYCARD_ZONE_ID`. Authentication sends client credentials in the form body
+to `/service-account-token`. Management API paths start at the endpoint root.
 
 `bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
 resource, an application dependency, a version 1 token credential, and two

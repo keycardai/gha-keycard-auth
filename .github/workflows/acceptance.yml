@@ -29,9 +29,8 @@ jobs:
         env:
           KEYCARD_CLIENT_ID: ${{ secrets.KEYCARD_CLIENT_ID }}
           KEYCARD_CLIENT_SECRET: ${{ secrets.KEYCARD_CLIENT_SECRET }}
-          KEYCARD_TOKEN_ENDPOINT: ${{ vars.KEYCARD_TOKEN_ENDPOINT }}
-          KEYCARD_API_URL: ${{ vars.KEYCARD_API_URL }}
-          KEYCARD_ZONE_ID: ${{ vars.KEYCARD_ZONE_ID }}
+          KEYCARD_ENDPOINT: https://api.keycard.ai
+          KEYCARD_ZONE_ID: fdqsqy07r9m1t80d7ipejmtpw4
 
       - name: Exchange with v1 credential
         uses: ./
