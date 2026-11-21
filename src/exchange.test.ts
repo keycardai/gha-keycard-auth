@@ -62,6 +62,20 @@ describe("exchangeForResource", () => {
     expect(body.get("client_id")).toBeNull();
   });
 
+  it("refuses redirects that could forward the client assertion (H2)", async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
+    await expect(exchangeForResource({
+      tokenEndpoint: "https://zone.keycard.cloud/oauth/2/token",
+      oidcToken: "OIDC_JWT",
+      resource: "urn:example:resource",
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })).rejects.toThrow("fetch failed");
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://zone.keycard.cloud/oauth/2/token",
+      expect.objectContaining({ method: "POST", redirect: "error" }),
+    );
+  });
+
   it.each([undefined, "", "client-123"])("preserves the form body with clientId=%j", async (clientId) => {
     const fetchImpl = vi.fn().mockResolvedValue({
       ok: true,

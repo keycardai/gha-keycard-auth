@@ -104,7 +104,8 @@ function parseZoneUrl(raw: string): string {
 }
 
 /**
- * The token only goes to the zone's discovered, origin-checked token endpoint.
+ * H2 previously required a same-origin audience. It is now enforced by H1's
+ * token endpoint origin check plus the exchange's no-redirect policy.
  * A workflow can already mint a GitHub token for any audience.
  */
 function parseAudience(raw: string, zoneUrl: string): string {

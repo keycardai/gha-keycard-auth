@@ -57,6 +57,8 @@ export async function exchangeForResource(args: {
 
   const resp = await fetchImpl(args.tokenEndpoint, {
     method: "POST",
+    // H2 mitigation — redirects must not forward the assertion beyond H1's checked origin.
+    redirect: "error",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
