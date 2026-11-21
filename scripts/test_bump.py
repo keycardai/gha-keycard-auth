@@ -35,9 +35,10 @@ class ReleaseTests(unittest.TestCase):
                 results = [subprocess.CompletedProcess([], 0 if existing else 1, "", "")]
                 if not existing:
                     results.append(subprocess.CompletedProcess([], 0, "", ""))
-                with patch.object(bump, "git", return_value=subprocess.CompletedProcess(
-                    [], 0, "a" * 40, "",
-                )), patch.object(bump, "run", side_effect=results) as run:
+                with patch.object(bump, "git", side_effect=[
+                    subprocess.CompletedProcess([], 0, "a" * 40, ""),
+                    subprocess.CompletedProcess([], 0, "## v0.3.1\n\n- Fix it\n", ""),
+                ]), patch.object(bump, "run", side_effect=results) as run:
                     bump.publish(cwd, "0.3.1")
                     self.assertEqual(run.call_count, 1 if existing else 2)
                     if not existing:
@@ -47,16 +48,17 @@ class ReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             cwd = Path(directory)
             (cwd / "CHANGELOG.md").write_text("## v0.3.1\n\n- Fix it\n")
-            with patch.object(bump, "git", return_value=subprocess.CompletedProcess(
-                [], 0, "a" * 40, "",
-            )), patch.object(bump, "run", side_effect=[
+            with patch.object(bump, "git", side_effect=[
+                subprocess.CompletedProcess([], 0, "a" * 40, ""),
+                subprocess.CompletedProcess([], 0, "## v0.3.1\n\n- Fix it\n", ""),
+            ]), patch.object(bump, "run", side_effect=[
                 subprocess.CompletedProcess([], 1, "", ""),
                 subprocess.CalledProcessError(1, "gh release create"),
             ]):
                 with self.assertRaises(subprocess.CalledProcessError):
                     bump.publish(cwd, "0.3.1")
 
-    def exercise(self, bump_code=0, push_codes=(0,), head="fix: something"):
+    def exercise(self, bump_code=0, push_codes=(0,), head="fix: something", tags=""):
         pushes = iter(push_codes)
         clones = []
 
@@ -67,6 +69,9 @@ class ReleaseTests(unittest.TestCase):
                 (cwd / "package.json").write_text('{"version":"0.3.0"}')
             elif args[0] == "log":
                 result.stdout = head
+            elif args[0] == "tag":
+                self.assertEqual(args, ("tag", "--list", "v*", "--sort=-version:refname"))
+                result.stdout = tags
             elif args[0] == "push":
                 self.assertEqual(args[1], "--atomic")
                 self.assertEqual(args[-1], "refs/tags/v0.3.1:refs/tags/v0.3.1")
@@ -76,6 +81,8 @@ class ReleaseTests(unittest.TestCase):
 
         def run(*args, cwd, check=True):
             self.assertEqual(args, ("cz", "bump", "--changelog", "--yes"))
+            if tags:
+                publish.assert_called_with(cwd, tags.splitlines()[0][1:])
             if bump_code == 0:
                 (cwd / "package.json").write_text('{"version":"0.3.1"}')
             return subprocess.CompletedProcess(args, bump_code, "", "")
@@ -112,8 +119,18 @@ class ReleaseTests(unittest.TestCase):
             self.exercise(push_codes=(1, 1, 1))
 
     def test_retry_recovers_release_after_bump_was_pushed(self):
-        _, published = self.exercise(head="bump: 0.2.0 → 0.3.0")
+        _, published = self.exercise(head="bump: 0.2.0 → 0.3.0", tags="v0.3.0\n")
         self.assertEqual(published[0].args[1], "0.3.0")
+
+    def test_recovers_latest_release_before_skipping_non_release_commits(self):
+        _, published = self.exercise(
+            bump_code=21, head="docs: update usage", tags="v0.10.0\nv0.9.0\n",
+        )
+        self.assertEqual([call.args[1] for call in published], ["0.10.0"])
+
+    def test_recovers_latest_release_before_new_bump(self):
+        _, published = self.exercise(tags="v0.3.0\nv0.2.0\n")
+        self.assertEqual([call.args[1] for call in published], ["0.3.0", "0.3.1"])
 
 
 if __name__ == "__main__":

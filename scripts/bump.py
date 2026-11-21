@@ -42,14 +42,22 @@ def release_notes(changelog: str, version: str, sha: str) -> str:
 def publish(cwd: Path, version: str) -> None:
     tag = f"v{version}"
     sha = git("rev-parse", f"{tag}^{{commit}}", cwd=cwd).stdout.strip()
-    notes = cwd / "release-notes.md"
-    notes.write_text(release_notes((cwd / "CHANGELOG.md").read_text(), version, sha))
     existing = run("gh", "release", "view", tag, cwd=cwd, check=False)
     if existing.returncode == 0:
         print(f"Release {tag} already exists. Leaving it unchanged.")
         return
-    run("gh", "release", "create", tag, "--verify-tag", "--title", tag,
-        "--notes-file", str(notes), cwd=cwd)
+    changelog = git("show", f"{tag}:CHANGELOG.md", cwd=cwd).stdout
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".md") as notes:
+        notes.write(release_notes(changelog, version, sha))
+        notes.flush()
+        run("gh", "release", "create", tag, "--verify-tag", "--title", tag,
+            "--notes-file", notes.name, cwd=cwd)
+
+
+def ensure_latest_release(cwd: Path) -> None:
+    tags = git("tag", "--list", "v*", "--sort=-version:refname", cwd=cwd).stdout.splitlines()
+    if tags:
+        publish(cwd, tags[0][1:])
 
 
 def main() -> None:
@@ -61,10 +69,9 @@ def main() -> None:
             git("clone", "--branch", "main", f"{server}/{repository}.git", ".", cwd=cwd)
             git("config", "user.name", "github-actions[bot]", cwd=cwd)
             git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com", cwd=cwd)
-            version = json.loads((cwd / "package.json").read_text())["version"]
+            ensure_latest_release(cwd)
             head = git("log", "-1", "--format=%s", cwd=cwd).stdout.strip()
             if head.startswith("bump:"):
-                publish(cwd, version)
                 return
             bump = run("cz", "bump", "--changelog", "--yes", cwd=cwd, check=False)
             if bump.returncode in (3, 21):
