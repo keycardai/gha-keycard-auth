@@ -26,6 +26,21 @@ Note: `package.json` sets `"private": true`. The action is distributed by
 referencing the GitHub repo + SHA, not by publishing to npm, so the private
 flag prevents accidental `npm publish` while keeping the repo public.
 
+## Acceptance tests
+
+The `Acceptance tests` workflow needs the `KEYCARD_CLIENT_ID` and
+`KEYCARD_CLIENT_SECRET` secrets for a service account with Management API access
+to the test zone. Set repository variables `KEYCARD_TOKEN_ENDPOINT` to its OAuth
+client credentials token endpoint, `KEYCARD_API_URL` to the Management API base
+URL including `/mgmt/v1`, and `KEYCARD_ZONE_ID` to the fixed test zone ID.
+
+`bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
+resource, an application dependency, a version 1 token credential, and two
+version 2 token credentials in that
+zone. It creates missing fixtures and updates changed fields. Fixtures persist
+between runs. The workflow checks a version 1 exchange with the default audience.
+Fork pull requests skip these tests.
+
 ## Common commands
 
 ```sh
