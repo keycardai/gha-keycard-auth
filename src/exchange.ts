@@ -34,6 +34,7 @@ export async function exchangeForResource(args: {
   oidcToken: string;
   resource: string;
   scope?: string;
+  clientId?: string;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }): Promise<string> {
@@ -50,9 +51,14 @@ export async function exchangeForResource(args: {
   if (args.scope) {
     body.set("scope", args.scope);
   }
+  if (args.clientId) {
+    body.set("client_id", args.clientId);
+  }
 
   const resp = await fetchImpl(args.tokenEndpoint, {
     method: "POST",
+    // H2 mitigation — redirects must not forward the assertion beyond H1's checked origin.
+    redirect: "error",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Accept: "application/json",
