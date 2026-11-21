@@ -2,6 +2,7 @@
 # shellcheck disable=SC2016
 set -euo pipefail
 shopt -s inherit_errexit
+KEYCARD_ENDPOINT=${KEYCARD_ENDPOINT:-https://api.keycard.ai}
 
 mask() {
   if [[ ${GITHUB_ACTIONS:-} == true ]]; then
@@ -18,7 +19,16 @@ api() {
   [[ -z $body ]] || args=(--data "$body")
   curl --silent --show-error --fail --proto '=https' --connect-timeout 15 --max-time 60 \
     --request "$method" --header "Authorization: Bearer $TOKEN" \
-    --header 'Content-Type: application/json' "${args[@]}" "${KEYCARD_API_URL%/}$path"
+    --header 'Content-Type: application/json' "${args[@]}" "${KEYCARD_ENDPOINT%/}$path"
+}
+
+get_token() {
+  curl --silent --show-error --fail --proto '=https' --connect-timeout 15 --max-time 60 \
+    --data 'grant_type=client_credentials' \
+    --data-urlencode "client_id=$KEYCARD_CLIENT_ID" \
+    --data-urlencode "client_secret=$KEYCARD_CLIENT_SECRET" \
+    "${KEYCARD_ENDPOINT%/}/service-account-token" \
+    | jq -er '.access_token | select(type == "string" and length > 0)'
 }
 
 items() {
@@ -73,11 +83,9 @@ credential() {
 main() {
   [[ ${1:-} == up && $# == 1 ]] || { echo 'usage: acceptance/zone.sh up' >&2; return 2; }
   : "${KEYCARD_CLIENT_ID:?required}" "${KEYCARD_CLIENT_SECRET:?required}"
-  : "${KEYCARD_TOKEN_ENDPOINT:?required}" "${KEYCARD_API_URL:?required}" "${KEYCARD_ZONE_ID:?required}"
+  : "${KEYCARD_ZONE_ID:?required}"
   mask "$KEYCARD_CLIENT_SECRET"
-  TOKEN=$(curl --silent --show-error --fail --proto '=https' --connect-timeout 15 --max-time 60 \
-    --user "$KEYCARD_CLIENT_ID:$KEYCARD_CLIENT_SECRET" --data 'grant_type=client_credentials' \
-    "$KEYCARD_TOKEN_ENDPOINT" | jq -er '.access_token | select(type == "string" and length > 0)')
+  TOKEN=$(get_token)
   mask "$TOKEN"
   Z="/zones/$KEYCARD_ZONE_ID"
   local issuer resource custom default sts audience='https://github.com/keycardai/gha-keycard-auth'

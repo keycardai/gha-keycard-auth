@@ -96,3 +96,45 @@ test("up rejects missing configuration", () => {
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /KEYCARD_CLIENT_ID/);
 });
+
+test("token requests use form credentials and the configured endpoint", () => {
+  for (const endpoint of ["https://api.keycard.ai", "https://api.example.com/"]) {
+    const result = run(`
+      KEYCARD_ENDPOINT='${endpoint}' KEYCARD_CLIENT_ID='id+value' KEYCARD_CLIENT_SECRET='secret&value'
+      curl() { printf '%s\\n' "$@" >&2; echo '{"access_token":"test-token"}'; }
+      get_token
+    `);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), "test-token");
+    const args = result.stderr.trim().split("\n");
+    assert.ok(args.includes("grant_type=client_credentials"));
+    assert.ok(args.includes("client_id=id+value"));
+    assert.ok(args.includes("client_secret=secret&value"));
+    assert.equal(args.filter((arg) => arg === "--data-urlencode").length, 2);
+    assert.ok(!args.includes("--user"));
+    assert.equal(args.at(-1), `${endpoint.replace(/\/$/, "")}/service-account-token`);
+  }
+});
+
+test("endpoint defaults to production and Management API paths start at its root", () => {
+  const result = run(`
+    unset KEYCARD_ENDPOINT
+    source acceptance/zone.sh
+    TOKEN=test-token
+    curl() { printf '%s\\n' "$@"; }
+    api GET /zones/test
+  `);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim().split("\n").at(-1), "https://api.keycard.ai/zones/test");
+});
+
+test("token requests reject empty responses and propagate HTTP failures", () => {
+  for (const response of ["{}", '{"access_token":""}', "failure"]) {
+    const result = run(`
+      KEYCARD_CLIENT_ID=id KEYCARD_CLIENT_SECRET=secret
+      curl() { ${response === "failure" ? "return 22" : `echo '${response}'`}; }
+      get_token
+    `);
+    assert.notEqual(result.status, 0);
+  }
+});
