@@ -19,7 +19,8 @@ test("ensure creates missing fixtures", () => {
 test("ensure keeps matching fixtures and patches changed fields", () => {
   for (const name of ["Test", "Old"]) {
     const result = run(`
-      items() { echo '[{"id":"existing","identifier":"test","name":"${name}"}]'; }
+      Z=/zones/test
+      items() { jq -nc --arg marker "$MARKER" '{id:"existing",identifier:"test",name:"${name}",description:$marker} | [.]'; }
       api() { [[ $1 == PATCH && $2 == /fixtures/existing ]] || return 1; echo patched >&2; }
       ensure /fixtures '{"identifier":"test","name":"Test"}'
     `);
@@ -137,4 +138,68 @@ test("token requests reject empty responses and propagate HTTP failures", () => 
     `);
     assert.notEqual(result.status, 0);
   }
+});
+
+test("existing providers are read-only even when their fields differ", () => {
+  const result = run(`
+    Z=/zones/test
+    items() { echo '[{"id":"shared","identifier":"https://token.actions.githubusercontent.com","name":"Shared provider"}]'; }
+    api() { echo 'unexpected mutation' >&2; return 1; }
+    ensure_provider '{"identifier":"https://token.actions.githubusercontent.com","name":"GitHub Actions"}'
+  `);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "shared");
+  assert.equal(result.stderr, "");
+});
+
+test("new providers, applications and resources receive the ownership marker", () => {
+  for (const call of [
+    `ensure_provider '{"identifier":"https://token.actions.githubusercontent.com"}'`,
+    `ensure "$Z/applications" '{"identifier":"gha-keycard-auth-acceptance"}'`,
+    `ensure "$Z/resources" '{"identifier":"urn:keycard:gha-keycard-auth:acceptance"}'`,
+  ]) {
+    const result = run(`
+      Z=/zones/test
+      items() { echo '[]'; }
+      api() { [[ $1 == POST ]] || return 1; echo "$3" >&2; echo '{"id":"created"}'; }
+      ${call}
+    `);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stderr).description,
+      "Managed by keycardai/gha-keycard-auth acceptance tests (acceptance/zone.sh)");
+  }
+});
+
+test("only exact legacy acceptance objects with empty descriptions can be adopted", () => {
+  for (const [collection, identifier] of [
+    ["applications", "gha-keycard-auth-acceptance"],
+    ["resources", "urn:keycard:gha-keycard-auth:acceptance"],
+  ]) {
+    for (const [name, description, allowed] of [
+      ["gha-keycard-auth acceptance", "", true],
+      ["Another application", "", false],
+      ["gha-keycard-auth acceptance", "Owned elsewhere", false],
+    ]) {
+      const result = run(`
+        Z=/zones/test
+        items() { echo '[{"id":"existing","identifier":"${identifier}","name":"${name}","description":"${description}"}]'; }
+        api() { [[ $1 == PATCH && $2 == "$Z/${collection}/existing" ]] || return 1; echo patched >&2; }
+        ensure "$Z/${collection}" '{"identifier":"${identifier}","name":"gha-keycard-auth acceptance"}'
+      `);
+      assert.equal(result.status === 0, allowed, result.stderr);
+      assert.equal(result.stderr.includes("patched"), allowed);
+      if (!allowed) assert.match(result.stderr, /Refusing to modify unowned object/);
+    }
+  }
+});
+
+test("matching the legacy name alone does not authorize adoption", () => {
+  const result = run(`
+    Z=/zones/test
+    items() { echo '[{"id":"existing","identifier":"other","name":"gha-keycard-auth acceptance"}]'; }
+    api() { echo 'unexpected mutation' >&2; return 1; }
+    ensure "$Z/applications" '{"identifier":"other","name":"gha-keycard-auth acceptance"}'
+  `);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Refusing to modify unowned object/);
 });

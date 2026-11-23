@@ -39,7 +39,9 @@ to `/service-account-token`. Management API paths start at the endpoint root.
 `bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
 resource, an application dependency, a version 1 token credential, and two
 version 2 token credentials in that
-zone. It creates missing fixtures and updates changed fields. Fixtures persist
+zone. It only changes objects it owns and reuses existing Providers read-only.
+It adopts earlier acceptance Applications and Resources only when their exact
+identifier and name match and their description is empty. Fixtures persist
 between runs. The workflow checks a version 1 exchange with the default audience.
 Fork pull requests skip these tests.
 

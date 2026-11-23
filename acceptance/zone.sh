@@ -3,6 +3,7 @@
 set -euo pipefail
 shopt -s inherit_errexit
 KEYCARD_ENDPOINT=${KEYCARD_ENDPOINT:-https://api.keycard.ai}
+MARKER='Managed by keycardai/gha-keycard-auth acceptance tests (acceptance/zone.sh)'
 
 mask() {
   if [[ ${GITHUB_ACTIONS:-} == true ]]; then
@@ -50,13 +51,35 @@ same() {
 
 ensure() {
   local path=$1 want=$2 current id
+  want=$(jq -c --arg marker "$MARKER" '. + {description: $marker}' <<<"$want")
   current=$(items "$path" | jq -c --argjson w "$want" '[.[] | select(.identifier == $w.identifier)][0] // empty')
   if [[ -z $current ]]; then
     api POST "$path" "$want" | jq -er .id
   else
     id=$(jq -er .id <<<"$current")
+    if [[ $(jq -r '.description // ""' <<<"$current") != "$MARKER" ]]; then
+      if ! jq -e --arg path "$path" --arg zone "$Z" '
+        .name == "gha-keycard-auth acceptance" and
+        (($path == ($zone + "/applications") and .identifier == "gha-keycard-auth-acceptance") or
+         ($path == ($zone + "/resources") and .identifier == "urn:keycard:gha-keycard-auth:acceptance"))
+        and (.description // "") == ""' <<<"$current" >/dev/null; then
+        echo "Refusing to modify unowned object $path/$id: acceptance ownership marker is missing" >&2
+        return 1
+      fi
+    fi
     same "$want" <<<"$current" || api PATCH "$path/$id" "$want" >/dev/null
     printf '%s\n' "$id"
+  fi
+}
+
+ensure_provider() {
+  local want=$1 current
+  current=$(items "$Z/providers" | jq -c --argjson w "$want" '[.[] | select(.identifier == $w.identifier)][0] // empty')
+  if [[ -n $current ]]; then
+    jq -er .id <<<"$current"
+  else
+    want=$(jq -c --arg marker "$MARKER" '. + {description: $marker}' <<<"$want")
+    api POST "$Z/providers" "$want" | jq -er .id
   fi
 }
 
@@ -90,7 +113,7 @@ main() {
   Z="/zones/$KEYCARD_ZONE_ID"
   local issuer resource custom default sts audience='https://github.com/keycardai/gha-keycard-auth'
   issuer=$(api GET "$Z" | jq -er '.protocols.oauth2.issuer')
-  PROVIDER=$(ensure "$Z/providers" '{"name":"GitHub Actions","identifier":"https://token.actions.githubusercontent.com","protocols":{"oauth2":{"issuer":"https://token.actions.githubusercontent.com"}}}')
+  PROVIDER=$(ensure_provider '{"name":"GitHub Actions","identifier":"https://token.actions.githubusercontent.com","protocols":{"oauth2":{"issuer":"https://token.actions.githubusercontent.com"}}}')
   APP=$(ensure "$Z/applications" '{"name":"gha-keycard-auth acceptance","identifier":"gha-keycard-auth-acceptance"}')
   sts=$(items "$Z/providers" | jq -er '[.[] | select(.type == "keycard-sts")][0].id | select(type == "string")')
   resource=$(ensure "$Z/resources" "$(jq -nc --arg p "$sts" \
