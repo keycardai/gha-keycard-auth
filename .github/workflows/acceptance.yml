@@ -11,12 +11,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: acceptance-${{ github.ref }}
+  group: acceptance-zone-fdqsqy07r9m1t80d7ipejmtpw4
   cancel-in-progress: false
 
 jobs:
   acceptance:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

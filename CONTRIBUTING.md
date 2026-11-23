@@ -15,6 +15,7 @@ You need:
 
 - Node.js **24.x** (matches the `node24` action runtime).
 - `npm` 10+.
+- Bash 4.4+ and jq 1.6+ for the acceptance helper tests in `npm test`.
 
 ```sh
 git clone git@github.com:keycardai/gha-keycard-auth.git
@@ -43,7 +44,7 @@ zone. It only changes objects it owns and reuses existing Providers read-only.
 It adopts earlier acceptance Applications and Resources only when their exact
 identifier and name match and their description is empty. Fixtures persist
 between runs. The workflow checks a version 1 exchange with the default audience.
-Fork pull requests skip these tests.
+Fork and Dependabot pull requests skip these tests.
 
 ## Common commands
 
