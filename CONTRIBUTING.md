@@ -15,6 +15,7 @@ You need:
 
 - Node.js **24.x** (matches the `node24` action runtime).
 - `npm` 10+.
+- Bash 4.4+ and jq 1.6+ for the acceptance helper tests in `npm test`.
 
 ```sh
 git clone git@github.com:keycardai/gha-keycard-auth.git
@@ -38,12 +39,13 @@ to `/service-account-token`. Management API paths start at the endpoint root.
 
 `bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
 resource, an application dependency, a version 1 token credential, and two
-version 2 token credentials in that
-zone. It only changes objects it owns and reuses existing Providers read-only.
+version 2 token credentials in that zone. It only changes objects it owns and
+reuses existing Providers read-only.
 It adopts earlier acceptance Applications and Resources only when their exact
 identifier and name match and their description is empty. Fixtures persist
-between runs. The workflow checks a version 1 exchange with the default audience.
-Fork pull requests skip these tests.
+between runs. The workflow checks a v1 exchange, v2 custom and default audiences,
+and an audience mismatch that must fail. Fork and Dependabot pull requests skip
+these tests.
 
 ## Common commands
 
