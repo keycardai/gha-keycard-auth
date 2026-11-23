@@ -26,6 +26,25 @@ Note: `package.json` sets `"private": true`. The action is distributed by
 referencing the GitHub repo + SHA, not by publishing to npm, so the private
 flag prevents accidental `npm publish` while keeping the repo public.
 
+## Acceptance tests
+
+The `Acceptance tests` workflow needs the `KEYCARD_CLIENT_ID` and
+`KEYCARD_CLIENT_SECRET` secrets for a service account with Management API access
+to zone `fdqsqy07r9m1t80d7ipejmtpw4`. The workflow sets `KEYCARD_ENDPOINT` to
+`https://api.keycard.ai` and `KEYCARD_ZONE_ID` to that zone ID. Local runs can
+override `KEYCARD_ENDPOINT`, which defaults to `https://api.keycard.ai`, and must
+set `KEYCARD_ZONE_ID`. Authentication sends client credentials in the form body
+to `/service-account-token`. Management API paths start at the endpoint root.
+
+`bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
+resource, an application dependency, a version 1 token credential, and two
+version 2 token credentials in that
+zone. It only changes objects it owns and reuses existing Providers read-only.
+It adopts earlier acceptance Applications and Resources only when their exact
+identifier and name match and their description is empty. Fixtures persist
+between runs. The workflow checks a version 1 exchange with the default audience.
+Fork pull requests skip these tests.
+
 ## Common commands
 
 ```sh
