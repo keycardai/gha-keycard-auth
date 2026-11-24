@@ -232,7 +232,7 @@ Only that tag uses a forced push. If that push fails, the job fails.
 Protect only `v*.*.*` tags. Keep major tags such as `v0` movable.
 If `main` still ends at the bump commit, rerun the job to repair its major tag.
 Set `vars.SDK_RELEASE_APP_ID` and `secrets.SDK_RELEASE_PRIVATE_KEY` for the App.
-It needs Contents write access and a bypass for the `main` ruleset.
+It needs Contents write access, Workflows read and write access, and a bypass for the `main` ruleset.
 
 Dependabot updates the pip requirements in `/scripts`.
 From `scripts/`, regenerate the lock with pip-tools 7.5.2 on Python 3.12 for Linux:
