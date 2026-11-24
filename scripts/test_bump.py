@@ -265,7 +265,8 @@ class PublishTests(unittest.TestCase):
                 raise subprocess.CalledProcessError(1, args)
             return result()
 
-        with patch.object(bump, "clean_git", side_effect=clean_git), patch.object(bump, "run_bump") as cz:
+        with patch.object(bump, "clean_git", side_effect=clean_git), patch.object(bump, "run_bump") as cz, \
+             patch.object(Path, "is_file", return_value=True), patch.object(Path, "is_symlink", return_value=False):
             status = bump.publish(Path("release.bundle"), tag, "trusted-remote", "app-token")
             cz.assert_not_called()
             return status
@@ -298,6 +299,15 @@ class PublishTests(unittest.TestCase):
     def test_invalid_tag_is_rejected(self):
         with self.assertRaises(ValueError):
             self.exercise(tag="../main")
+
+    def test_directories_and_symlinks_cannot_be_fetched_as_repositories(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(bump, "clean_git") as git:
+            link = Path(directory) / "release.bundle"
+            link.symlink_to(directory)
+            for artifact in (Path(directory), link):
+                with self.subTest(artifact=artifact), self.assertRaisesRegex(ValueError, "regular Git bundle"):
+                    bump.publish(artifact, "v0.4.0", "trusted-remote", "app-token")
+            git.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -96,6 +96,8 @@ def prepare(bundle: Path) -> str | None:
 def publish(bundle: Path, tag: str, repository: str, token: str) -> int:
     if not re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag):
         raise ValueError("Invalid release tag")
+    if bundle.is_symlink() or not bundle.is_file():
+        raise ValueError("Release artifact must be a regular Git bundle file")
     with tempfile.TemporaryDirectory(prefix="release-push-") as directory:
         repo = Path(directory) / "repository.git"
         clean_git("clone", "--bare", "--no-local", "--template=", repository, str(repo))
@@ -103,6 +105,7 @@ def publish(bundle: Path, tag: str, repository: str, token: str) -> int:
         def trusted_git(*args, **kwargs):
             return clean_git(*args, cwd=repo, **kwargs)
 
+        trusted_git("bundle", "verify", str(bundle))
         trusted_git("fetch", "--no-tags", str(bundle), "refs/heads/main:refs/prepared/main",
                     f"refs/tags/{tag}:refs/prepared/tag")
         sha = trusted_git("rev-parse", "refs/prepared/main^{commit}").stdout.strip()
