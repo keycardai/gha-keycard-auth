@@ -15,7 +15,7 @@ Workflows present their OIDC identity to Keycard and get back scoped credentials
 
 ## Quickstart
 
-> **Prerequisite:** a Keycard zone configured to trust GitHub's OIDC provider. See [Setup](#setup).
+> Prerequisite: a Keycard Zone configured to trust GitHub's OIDC Provider. See [Setup](#setup).
 
 ```yaml
 permissions:
@@ -26,6 +26,7 @@ steps:
   - uses: keycardai/gha-keycard-auth@<sha>
     with:
       zone-url: https://<id>.keycard.cloud
+      client-id: ${{ vars.KEYCARD_CLIENT_ID }}
       credentials: |
         - resource: urn:fly:app:my-app:deploy-token
           type: env
@@ -61,6 +62,7 @@ steps:
   - uses: keycardai/gha-keycard-auth@<sha>
     with:
       zone-url: https://<id>.keycard.cloud
+      client-id: ${{ vars.KEYCARD_CLIENT_ID }}
       credentials: |
         - resource: urn:pulumi:org:keycardlabs
           type: pulumi
@@ -85,18 +87,17 @@ Providers ship inside this action — there is no runtime plugin mechanism. See 
 
 | Input | Required | Description |
 |---|---|---|
-| `zone-url` | yes | Base URL of the Keycard zone. |
-| `audience` | no | Audience for the GHA OIDC token. Accepts any string. Must equal the credential's `allowed_audience` for v2 credentials. When omitted, defaults to the zone issuer (`zone-url`, for example `https://<zone-id>.keycard.cloud`). |
-| `client-id` | no | Client ID of a v2 workload identity credential. Omit for v1 credentials. Whitespace within the value is not allowed. |
+| `zone-url` | yes | Base URL of the Keycard Zone. |
+| `audience` | no | Audience for the GHA OIDC token. Accepts any string. Must equal the credential's `allowed_audience`. When omitted, defaults to the Zone issuer (`zone-url`, for example `https://<zone-id>.keycard.cloud`). |
+| `client-id` | no | Client ID of the workload identity credential. Omit only for [legacy credentials](#legacy-credentials). Whitespace within the value is not allowed. |
 | `credentials` | yes | YAML list of credential specs (see below). |
 
-### Version 2 credentials
+### Workload identity credentials
 
-For a v2 workload identity credential, set `client-id`.
+For a workload identity credential, set `client-id`.
 The optional `audience` defaults to the Zone issuer.
 A custom value can be any string, not just a Zone URL.
 It must match the credential's `allowed_audience`.
-Leave `client-id` unset for v1 credentials.
 Do not use GitHub's default `https://github.com/<owner>` audience, because other
 services that receive those tokens could replay them.
 
@@ -120,7 +121,7 @@ steps:
 
 | Field | Required | Notes |
 |---|---|---|
-| `resource` | yes | Keycard resource URN. |
+| `resource` | yes | Keycard Resource URN. |
 | `type` | yes | `env`, `file`, or a [provider type](#providers). |
 | `scope` | no | OAuth scope to request on the resource. |
 | `env-name` | when `type=env` | Env var to set. Must match `^[A-Z_][A-Z0-9_]*$` and is not allowed to be a reserved name (e.g. `PATH`, `NODE_OPTIONS`, `LD_PRELOAD`, anything starting with `GITHUB_`/`RUNNER_`/`ACTIONS_`/`INPUT_`). Providers also accept this field as an optional override of their default env var. |
@@ -128,9 +129,20 @@ steps:
 | `file-mode` | no | Octal mode for `file`, default `0600`. **Must be a quoted string** (`"0600"`) — unquoted YAML coerces it to a decimal integer. Must be owner-only; group/world bits are rejected (so `0640`, `0644`, etc. fail). |
 | `<provider>` | when `type=<provider>` | Provider-specific config block. See [Providers](#providers). |
 
+### Legacy credentials
+
+Keycard matches legacy credentials by Provider issuer and OIDC subject.
+Omit `client-id` for these credentials.
+
 ## Setup
 
-You need a Keycard zone with GitHub Actions configured as a trusted OIDC provider, plus an application and resource to authorize. See the [Keycard documentation](https://docs.keycard.ai) for the step-by-step (console and Terraform).
+Configure your Zone to trust GitHub's OIDC Provider.
+Create an Application, a Resource, and a workload identity credential for the Application.
+Authorize the Application to access the Resource.
+Set the credential's allowed audience to the Zone issuer.
+Restrict its OIDC subject to your repository.
+Pass its client ID as `client-id` and omit `audience`.
+See the [Keycard documentation](https://docs.keycard.ai) for console and Terraform setup.
 
 ## Pinning
 
