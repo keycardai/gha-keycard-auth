@@ -24,6 +24,7 @@ export interface OrchestrateDeps {
     oidcToken: string;
     resource: string;
     scope?: string;
+    clientId?: string;
   }) => Promise<ExchangeOutcome>;
   applyCredential: (spec: CredentialSpec, outcome: ExchangeOutcome) => void;
   log: (message: string) => void;
@@ -59,6 +60,7 @@ export async function orchestrate(
           oidcToken,
           resource: spec.resource,
           scope: spec.scope,
+          clientId: inputs.clientId,
         })
         .then((outcome) => ({ spec, outcome })),
     ),

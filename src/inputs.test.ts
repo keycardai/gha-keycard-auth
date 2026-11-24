@@ -13,12 +13,14 @@ describe("parseInputs", () => {
   beforeEach(() => {
     clearInput("zone-url");
     clearInput("audience");
+    clearInput("client-id");
     clearInput("credentials");
   });
 
   afterEach(() => {
     clearInput("zone-url");
     clearInput("audience");
+    clearInput("client-id");
     clearInput("credentials");
   });
 
@@ -35,6 +37,7 @@ describe("parseInputs", () => {
     const inputs = parseInputs();
     expect(inputs.zoneUrl).toBe("https://zone.keycard.cloud");
     expect(inputs.audience).toBe("https://zone.keycard.cloud");
+    expect(inputs.clientId).toBeUndefined();
     expect(inputs.credentials).toEqual([
       { resource: "urn:fly:app:foo:deploy-token", type: "env", envName: "FLY_API_TOKEN" },
     ]);
@@ -76,9 +79,10 @@ describe("parseInputs", () => {
     expect(parseInputs().audience).toBe("https://zone.keycard.cloud/custom");
   });
 
-  it("rejects cross-origin audience (H2)", () => {
+  it.each(["https://github.com/acme-corp", "custom-audience", "urn:example:audience"])(
+    "accepts custom audience %s", (audience) => {
     setInput("zone-url", "https://zone.keycard.cloud");
-    setInput("audience", "https://attacker.example");
+    setInput("audience", audience);
     setInput(
       "credentials",
       `
@@ -87,8 +91,36 @@ describe("parseInputs", () => {
   env-name: FLY_API_TOKEN
 `,
     );
-    expect(() => parseInputs()).toThrow(/audience must share origin/);
+    expect(parseInputs().audience).toBe(audience);
   });
+
+  it.each(["", "  \t\n"])("defaults empty audience %j to zone-url", (audience) => {
+    setInput("zone-url", "https://zone.keycard.cloud");
+    setInput("audience", audience);
+    setInput("credentials", "- resource: urn:example:resource\n  type: env\n  env-name: TOKEN");
+    expect(parseInputs().audience).toBe("https://zone.keycard.cloud");
+  });
+
+  it.each<[string, string | undefined]>([
+    ["client-123", "client-123"],
+    ["  client-123\t", "client-123"],
+    ["", undefined],
+    [" \t\n", undefined],
+  ])("parses client-id %j as %j", (raw, expected) => {
+    setInput("zone-url", "https://zone.keycard.cloud");
+    setInput("client-id", raw);
+    setInput("credentials", "- resource: urn:example:resource\n  type: env\n  env-name: TOKEN");
+    expect(parseInputs().clientId).toBe(expected);
+  });
+
+  it.each(["client id", "client\tid", "client\nid", "client\u00a0id"])(
+    "rejects whitespace inside client-id %j", (clientId) => {
+      setInput("zone-url", "https://zone.keycard.cloud");
+      setInput("client-id", clientId);
+      setInput("credentials", "- resource: urn:example:resource\n  type: env\n  env-name: TOKEN");
+      expect(() => parseInputs()).toThrow("client-id must not contain whitespace");
+    },
+  );
 
   it("rejects http:// zone-url (L1)", () => {
     setInput("zone-url", "http://zone.keycard.cloud");

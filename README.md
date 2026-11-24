@@ -86,8 +86,35 @@ Providers ship inside this action — there is no runtime plugin mechanism. See 
 | Input | Required | Description |
 |---|---|---|
 | `zone-url` | yes | Base URL of the Keycard zone. |
-| `audience` | no | Audience for the GHA OIDC token. Defaults to `zone-url`. |
+| `audience` | no | Audience for the GHA OIDC token. Accepts any string. Must equal the credential's `allowed_audience` for v2 credentials. When omitted, defaults to the zone issuer (`zone-url`, for example `https://<zone-id>.keycard.cloud`). |
+| `client-id` | no | Client ID of a v2 workload identity credential. Omit for v1 credentials. Whitespace within the value is not allowed. |
 | `credentials` | yes | YAML list of credential specs (see below). |
+
+### Version 2 credentials
+
+For a v2 workload identity credential, set `client-id`.
+The optional `audience` defaults to the Zone issuer.
+A custom value can be any string, not just a Zone URL.
+It must match the credential's `allowed_audience`.
+Leave `client-id` unset for v1 credentials.
+Do not use GitHub's default `https://github.com/<owner>` audience, because other
+services that receive those tokens could replay them.
+
+```yaml
+permissions:
+  id-token: write
+  contents: read
+
+steps:
+  - uses: keycardai/gha-keycard-auth@<sha>
+    with:
+      zone-url: https://<id>.keycard.cloud
+      client-id: ${{ vars.KEYCARD_CLIENT_ID }}
+      credentials: |
+        - resource: urn:fly:app:my-app:deploy-token
+          type: env
+          env-name: FLY_API_TOKEN
+```
 
 ### Credential spec
 

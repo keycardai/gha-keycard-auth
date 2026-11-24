@@ -50,7 +50,8 @@ The workflow runs `zone.sh sweep` before setup and always runs cleanup after
 setup starts. Sweep deletes marked acceptance applications and resources older
 than one hour, including leftovers from earlier designs. Cleanup and sweep never
 delete the stable v1 fixture, Providers, or unmarked objects.
-The workflow checks a v1 exchange with the default audience.
+The workflow checks a v1 exchange, v2 custom and default audiences,
+and an audience mismatch that must fail.
 Fork pull requests skip these tests. Dependabot pull requests also need
 `KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET` set as Dependabot secrets.
 
@@ -205,12 +206,9 @@ write code.
 
 ## Releases
 
-Releases are tagged from `main` after CI passes. The release workflow:
-
-1. Bump version in `package.json` and `CHANGELOG.md`.
-2. Tag the commit `v<MAJOR>.<MINOR>.<PATCH>`.
-3. Publish a GitHub release with the changelog entry.
-4. The release notes include the SHA consumers should pin to.
+Releases are tagged from `main` after CI passes.
+Update `package.json` and `CHANGELOG.md`, then tag the commit
+`v<MAJOR>.<MINOR>.<PATCH>`.
 
 During the `0.x` line, only immutable release tags (`v0.1.0`, `v0.2.0`, …)
 are published — no moving major or minor tags, since 0.x explicitly allows
