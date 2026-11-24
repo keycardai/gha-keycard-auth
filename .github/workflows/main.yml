@@ -16,9 +16,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      # Push the bump commit with the SDK release app token (matching python-sdk
-      # and typescript-sdk). The default GITHUB_TOKEN cannot push to main, which
-      # requires changes via PR under the org ruleset; the app is on the bypass list.
       - name: Generate GitHub App token
         id: generate-token
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
@@ -29,8 +26,8 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          token: ${{ steps.generate-token.outputs.token }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Setup Python
         uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
@@ -38,7 +35,9 @@ jobs:
           python-version: "3.12"
 
       - name: Install commitizen
-        run: pip install commitizen
+        run: pip install commitizen==4.19.2
 
       - name: Bump version
         run: python scripts/bump.py
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}

@@ -1,156 +1,107 @@
 #!/usr/bin/env python3
-"""
-Bump version using commitizen for gha-keycard-auth.
+"""Bump gha-keycard-auth and push its version and major tags."""
 
-Handles version bumping including retry logic for pushing changes
-to avoid race conditions in CI.
-"""
-
-import subprocess
-import sys
-import time
+import os
 from pathlib import Path
+import re
+import subprocess
+import tomllib
 
 
-def run_command(cmd: list[str], cwd: str | None = None) -> tuple[int, str, str]:
-    """Run a command and return exit code, stdout, and stderr."""
-    try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=cwd, check=False
-        )
-        return result.returncode, result.stdout.strip(), result.stderr.strip()
-    except Exception as e:
-        return 1, "", str(e)
+def run_command(cmd: list[str], *, token: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    env = {key: value for key, value in os.environ.items() if key not in ("GH_TOKEN", "GITHUB_TOKEN")}
+    if token is not None:
+        env["GH_TOKEN"] = token
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    print(result.stdout, end="", flush=True)
+    print(result.stderr, end="", flush=True)
+    if check:
+        result.check_returncode()
+    return result
 
 
-def configure_git() -> None:
-    """Configure git for automated commits."""
-    print("Configuring git...")
-    run_command(["git", "config", "--local", "user.email", "action@github.com"])
-    run_command(["git", "config", "--local", "user.name", "GitHub Action"])
+def git(*args: str, token: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    credentials = ["-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential"] if token else []
+    return run_command(["git", *credentials, *args], token=token, check=check)
 
 
-def pull_latest_changes() -> bool:
-    """Pull latest changes from origin/main, handling local modifications."""
-    print("Checking for local changes before pulling...")
-
-    exit_code, stdout, stderr = run_command(["git", "status", "--porcelain"])
-    if exit_code != 0:
-        print(f"Failed to check git status: {stderr}")
-        return False
-
-    has_local_changes = bool(stdout.strip())
-
-    if has_local_changes:
-        print(f"Found local changes:\n{stdout}")
-        print("Stashing local changes before pulling...")
-        exit_code, _, stderr = run_command(
-            ["git", "stash", "push", "-m", "Auto-stash before version bump"]
-        )
-        if exit_code != 0:
-            print(f"Failed to stash local changes: {stderr}")
-            return False
-
-    print("Pulling latest changes from origin/main...")
-    exit_code, _, stderr = run_command(["git", "pull", "origin", "main"])
-    if exit_code != 0:
-        print(f"Failed to pull latest changes: {stderr}")
-        if has_local_changes:
-            run_command(["git", "stash", "pop"])
-        return False
-
-    if has_local_changes:
-        print("Restoring stashed changes...")
-        exit_code, _, stderr = run_command(["git", "stash", "pop"])
-        if exit_code != 0:
-            print(f"Warning: Failed to restore stashed changes: {stderr}")
-            # Handle go.sum conflicts
-            if "go.sum" in stderr:
-                print("Detected go.sum conflict. Resolving...")
-                run_command(["git", "checkout", "--theirs", "go.sum"])
-                run_command(["git", "add", "go.sum"])
-                run_command(["git", "stash", "drop"])
-
-    return True
+def current_tag() -> str:
+    config = tomllib.loads(Path(".cz.toml").read_text())
+    return f"v{config['tool']['commitizen']['version']}"
 
 
-def has_unreleased_changes() -> bool:
-    """Check if there are unreleased changes via cz changelog --dry-run."""
-    exit_code, stdout, _ = run_command(["cz", "changelog", "--dry-run"])
-    if exit_code != 0 or not stdout.strip():
-        return False
-    lines = stdout.split("\n")
-    if not lines[0].strip().startswith("## Unreleased"):
-        return False
-    for line in lines[1:]:
-        line = line.strip()
-        if line.startswith("##"):
-            break
-        if line:
-            return True
+def dependency_dist_changed() -> bool:
+    latest = git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*.[0-9]*.[0-9]*", check=False)
+    revision = f"{latest.stdout.strip()}..HEAD" if latest.returncode == 0 else "HEAD"
+    commits = git("log", "--format=%H%x00%s", revision).stdout.splitlines()
+    for commit in commits:
+        sha, subject = commit.split("\0", 1)
+        if re.match(r"^chore\(deps\)!?:", subject):
+            paths = git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r", sha, "--", "dist/").stdout
+            if paths.strip():
+                return True
     return False
 
 
-def run_bump() -> bool:
-    """Run commitizen bump."""
-    print("Running version bump...")
-    exit_code, stdout, stderr = run_command(["cz", "bump", "--changelog", "--yes"])
-    if exit_code != 0:
-        print(f"Failed to bump version: {stderr}")
-        return False
-    print("Version bump completed successfully")
-    print(stdout)
-    return True
+def run_bump() -> str | None:
+    cmd = ["cz", "bump", "--changelog", "--yes"]
+    result = run_command(cmd, check=False)
+    if result.returncode in (3, 21):
+        if not dependency_dist_changed():
+            print("No release-worthy commits. Skipping bump.")
+            return None
+        result = run_command([*cmd, "--increment", "PATCH"], check=False)
+    result.check_returncode()
+    return current_tag()
 
 
-def push_changes_with_retry(max_attempts: int = 3) -> bool:
-    """Push changes to origin/main with retry logic."""
+def move_major_tag(tag: str, token: str) -> None:
+    major = tag.split(".", 1)[0]
+    git("tag", "--force", major, f"{tag}^{{commit}}")
+    git("push", "origin", f"+refs/tags/{major}:refs/tags/{major}", token=token)
+
+
+def release(token: str, max_attempts: int = 3) -> None:
+    if git("status", "--porcelain").stdout.strip():
+        raise RuntimeError("Release requires a clean checkout")
+    git("config", "user.email", "action@github.com")
+    git("config", "user.name", "GitHub Action")
+    git("fetch", "origin", "main")
+    git("switch", "main")
+    git("merge", "--ff-only", "origin/main")
+
     for attempt in range(1, max_attempts + 1):
-        print(f"Attempting to push changes (attempt {attempt}/{max_attempts})...")
+        head = git("log", "-1", "--format=%s").stdout.strip()
+        if head.startswith("bump:"):
+            tag = current_tag()
+            tagged_sha = git("rev-parse", f"{tag}^{{commit}}").stdout.strip()
+            sha = git("rev-parse", "HEAD").stdout.strip()
+            if tagged_sha != sha:
+                raise RuntimeError(f"{tag} does not point to the bump commit")
+            move_major_tag(tag, token)
+            return
 
-        exit_code, _, stderr = run_command(
-            ["git", "push", "origin", "main", "--follow-tags"]
-        )
+        tag = run_bump()
+        if tag is None:
+            return
+        pushed = git("push", "--atomic", "origin", "main", f"refs/tags/{tag}", token=token, check=False)
+        if pushed.returncode == 0:
+            move_major_tag(tag, token)
+            return
+        if attempt == max_attempts:
+            raise RuntimeError(f"Could not push release after {max_attempts} attempts")
 
-        if exit_code == 0:
-            print(f"Successfully pushed changes on attempt {attempt}")
-            print("Explicitly pushing tags...")
-            run_command(["git", "push", "origin", "--tags"])
-            return True
-
-        print(f"Push failed on attempt {attempt}: {stderr}")
-
-        if attempt < max_attempts:
-            print("Pulling latest changes and retrying...")
-            if not pull_latest_changes():
-                continue
-            print("Waiting 2 seconds before retry...")
-            time.sleep(2)
-        else:
-            print(f"Failed to push after {max_attempts} attempts")
-
-    return False
+        print(f"Push rejected on attempt {attempt}/{max_attempts}. Rebuilding from origin/main.")
+        git("fetch", "origin", "main")
+        git("reset", "--hard", "origin/main")
+        git("tag", "--delete", tag)
+        remote_tag = git("ls-remote", "--tags", "origin", f"refs/tags/{tag}").stdout.strip()
+        if remote_tag:
+            git("fetch", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
 
 
-def main():
-    print("Starting version bump for gha-keycard-auth...")
-
-    configure_git()
-
-    if not pull_latest_changes():
-        sys.exit(1)
-
-    if not has_unreleased_changes():
-        print("No unreleased changes detected. Skipping bump.")
-        return
-
-    if not run_bump():
-        sys.exit(1)
-
-    if not push_changes_with_retry():
-        sys.exit(1)
-
-    print("Successfully completed version bump")
+def main() -> None:
+    release(os.environ["GH_TOKEN"])
 
 
 if __name__ == "__main__":

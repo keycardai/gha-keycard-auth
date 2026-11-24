@@ -133,7 +133,14 @@ You need a Keycard zone with GitHub Actions configured as a trusted OIDC provide
 ## Pinning
 
 This is a `0.x` release line. The API may change between minor versions.
-Pin to the 40-character commit SHA of a `v0.x.y` tag:
+Use `@v0` to follow releases in the `0.x` line:
+
+```yaml
+uses: keycardai/gha-keycard-auth@v0
+```
+
+Pinning to the 40-character commit SHA of a `vX.Y.Z` tag is safer.
+The code stays fixed until the pin changes:
 
 ```yaml
 uses: keycardai/gha-keycard-auth@<40-char-sha>   # v0.1.0

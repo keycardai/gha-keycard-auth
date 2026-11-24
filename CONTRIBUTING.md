@@ -207,16 +207,29 @@ write code.
 ## Releases
 
 Pushes to `main` run `.github/workflows/main.yml`, unless the head commit
-starts with `bump:`. The workflow checks out the repository with the SDK
-Release App token, installs Commitizen, and runs `python scripts/bump.py`.
+starts with `bump:`. The workflow installs Commitizen 4.19.2 and runs
+`python scripts/bump.py`. Checkout does not persist credentials.
+Only Git push commands receive the SDK Release App token.
+Commitizen runs without the token in its environment.
 Commitizen updates `.cz.toml`, `package.json`, and `CHANGELOG.md` from commits.
-The script pushes the bump commit and a `v<version>` tag.
+`feat` and `fix` commits increment the version. Breaking changes also increment it.
+A `chore(deps)` commit that changes `dist/` triggers a PATCH release.
+Those dependency commits appear in the changelog. Other dependency updates skip.
+Commits without an increment skip cleanly, including `ci`, `test`, `build`,
+`refactor`, `perf`, and `revert` commits without a breaking change.
+
+The script pushes the bump commit and its `vX.Y.Z` tag atomically.
+A rejected push retries from the latest `origin/main` and reruns the bump.
+If all attempts fail, the job fails. Semver tags never move.
+Each release also moves its major tag, such as `v0` or `v1`, to the release commit.
+Only that tag uses a forced push. If that push fails, the job fails.
+If `main` still ends at the bump commit, rerun the job to repair its major tag.
 Set `vars.SDK_RELEASE_APP_ID` and `secrets.SDK_RELEASE_PRIVATE_KEY` for the App.
 It needs Contents write access and a bypass for the `main` ruleset.
 
-During the `0.x` line, only immutable `v0.x.y` tags are published.
-Breaking changes can land between minor versions.
-Consumers pin to the tag's commit SHA. Dependabot or Renovate updates the pin.
+Breaking changes can land between minor versions during the `0.x` line.
+Consumers can use `@v0` to follow releases or pin a semver tag's commit SHA.
+SHA pinning is safer. Dependabot or Renovate updates the pin.
 Fetch tags, then run `git rev-parse 'v0.1.0^{commit}'` to resolve a tag's commit SHA.
 
 ## Questions
