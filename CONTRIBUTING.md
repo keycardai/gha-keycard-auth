@@ -202,25 +202,34 @@ or `feat: add a provider`. Squash merges use the PR title as the commit subject.
 The release process follows `keycardai/go-sdk`. Commitizen uses `cz_customize`
 to generate changelog entries from `feat`, `fix`, `refactor`, `perf`, `test`,
 `build`, `ci`, and `revert` commits, including scoped commits.
+It also includes `chore(deps)` commits. Other `chore` commits stay excluded.
 There is no manual Unreleased section. Published historical notes stay intact.
 
-On each push to `main`, the release workflow runs Commitizen 4.19.2 against
-commits since the last version tag. If no commits warrant a release, it exits
-without changes. Otherwise, it:
-
-1. Updates `package.json`, `package-lock.json`, and `CHANGELOG.md`.
-2. Pushes a `bump:` commit and a new `v<MAJOR>.<MINOR>.<PATCH>` tag atomically
-   with the SDK release GitHub App token. A push race retries from fresh `main`.
-3. Creates a GitHub release with that version's changelog entry, the full tag
-   commit SHA, and a copy-paste `uses:` snippet pinned to that SHA.
+Run the Bump Version workflow on `main` to open a release PR.
+It runs Commitizen 4.19.2 against commits since the last version tag.
+The optional increment input forces a major, minor, or patch bump.
+If no commits warrant a release, the automatic mode exits without changes.
+Otherwise, it updates `package.json`, `package-lock.json`, and `CHANGELOG.md`.
+It pushes a `release/v<version>` branch and opens a PR with the bump message
+as its title. An existing open PR for that version is reused.
 
 A `chore(deps)` commit that changes `dist/` triggers a patch release even without
 other release-worthy commits. Dev-only dependency updates do not release.
 
-The workflow skips pushes whose head commit message starts with `bump:`.
-The App needs Contents write access and permission to bypass the `main` PR
-ruleset. Its credentials are `vars.SDK_RELEASE_APP_ID` and
-`secrets.SDK_RELEASE_PRIVATE_KEY`.
+Both workflows use only `GITHUB_TOKEN`. Enable the repository Actions setting
+"Allow GitHub Actions to create and approve pull requests".
+GitHub does not start PR workflows for PRs opened with `GITHUB_TOKEN`.
+Close and reopen the PR with a user account to start its checks.
+Review it and squash merge with its `bump:` title unchanged.
+
+The Publish Release workflow runs when a push to `main` has a `bump:`
+head commit. It tags that commit and creates the GitHub release with its
+changelog entry, full tag SHA, and copy-paste SHA-pinned `uses:` snippet.
+Rerun it after a failure, or dispatch it on `main` to recover a tag without
+a release. An existing release stays unchanged. Tags never move.
+
+Automatic release on push is planned once the SDK Release App can bypass
+the `main` PR ruleset. That version is preserved on `devin/release-auto-on-push`.
 
 During the `0.x` line, only immutable release tags (`v0.1.0`, `v0.2.0`, …)
 are published. Tags are never moved or recreated, since 0.x explicitly allows

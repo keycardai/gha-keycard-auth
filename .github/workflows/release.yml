@@ -1,33 +1,26 @@
-name: Merge to Main
+name: Publish Release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: main
+  group: release-main
   cancel-in-progress: false
 
 jobs:
-  # The App token can bypass the main ruleset. Mint it only on push to main,
-  # never on pull_request. This job runs code already merged via reviewed PRs.
-  # Checkout uses persist-credentials: false. Only the bump step receives the
-  # token, and the App is limited to contents:write.
-  bump:
-    if: "!startsWith(github.event.head_commit.message, 'bump:')"
+  release:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || startsWith(github.event.head_commit.message, 'bump:'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - name: Generate release token
-        id: token
-        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2.2.1
-        with:
-          app-id: ${{ vars.SDK_RELEASE_APP_ID }}
-          private-key: ${{ secrets.SDK_RELEASE_PRIVATE_KEY }}
-          permission-contents: write
-
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0
@@ -37,9 +30,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: pip install commitizen==4.19.2
-
-      - name: Bump and publish
-        run: python scripts/bump.py
+      - name: Tag and publish the merged bump
+        run: python scripts/bump.py --publish
         env:
-          GH_TOKEN: ${{ steps.token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}

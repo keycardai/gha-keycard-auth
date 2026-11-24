@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Publish an atomic version bump, retrying against fresh main after push races."""
+"""Open a version bump PR or publish the merged bump."""
 
+import argparse
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
+from string import Template
 import tempfile
+import tomllib
 
 
 def run(*args: str, cwd: Path, check: bool = True) -> subprocess.CompletedProcess:
@@ -74,36 +77,84 @@ def dependency_dist_changed(cwd: Path) -> bool:
     return False
 
 
-def main() -> None:
+def bump_files(cwd: Path, increment: str) -> bool:
+    args = ["cz", "bump", "--changelog", "--yes", "--version-files-only"]
+    if increment != "auto":
+        args.extend(["--increment", increment.upper()])
+    result = run(*args, cwd=cwd, check=False)
+    if result.returncode in (3, 21):
+        if increment != "auto" or not dependency_dist_changed(cwd):
+            print("No release-worthy commits. Skipping bump.")
+            return False
+        result = run(*args, "--increment", "PATCH", cwd=cwd, check=False)
+    result.check_returncode()
+    return True
+
+
+def create_bump_pr(increment: str) -> None:
     repository = os.environ["GITHUB_REPOSITORY"]
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-    for attempt in range(1, 4):
-        with tempfile.TemporaryDirectory(prefix="keycard-release-") as directory:
-            cwd = Path(directory)
-            git("clone", "--branch", "main", f"{server}/{repository}.git", ".", cwd=cwd)
-            git("config", "user.name", "github-actions[bot]", cwd=cwd)
-            git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com", cwd=cwd)
-            ensure_latest_release(cwd)
-            head = git("log", "-1", "--format=%s", cwd=cwd).stdout.strip()
-            if head.startswith("bump:"):
-                return
-            bump = run("cz", "bump", "--changelog", "--yes", cwd=cwd, check=False)
-            if bump.returncode in (3, 21):
-                if not dependency_dist_changed(cwd):
-                    print("No release-worthy commits. Skipping release.")
-                    return
-                bump = run("cz", "bump", "--changelog", "--yes", "--increment", "PATCH",
-                           cwd=cwd, check=False)
-            bump.check_returncode()
-            version = json.loads((cwd / "package.json").read_text())["version"]
-            tag = f"v{version}"
-            pushed = git("push", "--atomic", "origin", "HEAD:refs/heads/main",
-                         f"refs/tags/{tag}:refs/tags/{tag}", cwd=cwd, check=False)
-            if pushed.returncode == 0:
-                publish(cwd, version)
-                return
-            print(f"Push failed on attempt {attempt}/3. Retrying from fresh main.")
-    raise RuntimeError("Could not push release after three attempts")
+    with tempfile.TemporaryDirectory(prefix="keycard-bump-") as directory:
+        cwd = Path(directory)
+        git("clone", "--branch", "main", f"{server}/{repository}.git", ".", cwd=cwd)
+        old_version = json.loads((cwd / "package.json").read_text())["version"]
+        head = git("log", "-1", "--format=%s", cwd=cwd).stdout.strip()
+        if head.startswith("bump:"):
+            print("The current version is already bumped. Publish it before another bump.")
+            return
+        if not bump_files(cwd, increment):
+            return
+        version = json.loads((cwd / "package.json").read_text())["version"]
+        branch = f"release/v{version}"
+        config = tomllib.loads((cwd / ".cz.toml").read_text())["tool"]["commitizen"]
+        message = Template(config["bump_message"]).substitute(
+            current_version=old_version, new_version=version,
+        )
+        existing = run("gh", "pr", "list", "--head", branch, "--base", "main",
+                       "--state", "open", "--json", "url", "--jq", ".[0].url // empty", cwd=cwd)
+        if existing.stdout.strip():
+            print(f"Bump PR already exists: {existing.stdout.strip()}")
+            return
+        git("config", "user.name", "github-actions[bot]", cwd=cwd)
+        git("config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com", cwd=cwd)
+        git("switch", "--create", branch, cwd=cwd)
+        git("add", "package.json", "package-lock.json", "CHANGELOG.md", cwd=cwd)
+        git("commit", "-m", message, cwd=cwd)
+        git("push", "origin", f"HEAD:refs/heads/{branch}", cwd=cwd)
+        run("gh", "pr", "create", "--head", branch, "--base", "main", "--title", message,
+            "--body", f"Update package versions and generate the changelog from commits.\n\n"
+            f"Merge with this PR title to publish v{version}.", cwd=cwd)
+
+
+def publish_bump(cwd: Path) -> None:
+    head = git("log", "-1", "--format=%s", cwd=cwd).stdout.strip()
+    if not head.startswith("bump:"):
+        ensure_latest_release(cwd)
+        return
+    version = json.loads((cwd / "package.json").read_text())["version"]
+    tag = f"v{version}"
+    sha = git("rev-parse", "HEAD", cwd=cwd).stdout.strip()
+    existing = git("rev-parse", "--verify", "--quiet", f"refs/tags/{tag}", cwd=cwd, check=False)
+    if existing.returncode == 0:
+        tagged_sha = git("rev-parse", f"{tag}^{{commit}}", cwd=cwd).stdout.strip()
+        if tagged_sha != sha:
+            raise ValueError(f"Refusing to move immutable tag {tag}")
+    ensure_latest_release(cwd)
+    if existing.returncode != 0:
+        git("tag", tag, sha, cwd=cwd)
+        git("push", "origin", f"refs/tags/{tag}:refs/tags/{tag}", cwd=cwd)
+    publish(cwd, version)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--increment", choices=("auto", "major", "minor", "patch"), default="auto")
+    parser.add_argument("--publish", action="store_true", help="Tag and release the checked-out bump")
+    args = parser.parse_args()
+    if args.publish:
+        publish_bump(Path.cwd())
+    else:
+        create_bump_pr(args.increment)
 
 
 if __name__ == "__main__":

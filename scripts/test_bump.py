@@ -1,7 +1,9 @@
 import importlib.util
 from pathlib import Path
+import re
 import subprocess
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -58,63 +60,41 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(subprocess.CalledProcessError):
                     bump.publish(cwd, "0.3.1")
 
-    def exercise(self, bump_code=0, push_codes=(0,), head="fix: something", tags="", deps=False):
-        pushes = iter(push_codes)
-        clones = []
-
-        def git(*args, cwd, check=True):
-            result = subprocess.CompletedProcess(args, 0, "", "")
-            if args[0] == "clone":
-                clones.append(cwd)
-                (cwd / "package.json").write_text('{"version":"0.3.0"}')
-            elif args[0] == "log":
-                result.stdout = head
-            elif args[0] == "tag":
-                self.assertEqual(args, ("tag", "--list", "v*", "--sort=-version:refname"))
-                result.stdout = tags
-            elif args[0] == "push":
-                self.assertEqual(args[1], "--atomic")
-                self.assertEqual(args[-1], "refs/tags/v0.3.1:refs/tags/v0.3.1")
-                self.assertNotIn("--force", args)
-                result.returncode = next(pushes)
-            return result
-
-        def run(*args, cwd, check=True):
-            forced = args[-2:] == ("--increment", "PATCH")
-            self.assertEqual(args, ("cz", "bump", "--changelog", "--yes") +
-                             (("--increment", "PATCH") if forced else ()))
-            if tags:
-                publish.assert_called_with(cwd, tags.splitlines()[0][1:])
-            if bump_code == 0 or forced:
-                (cwd / "package.json").write_text('{"version":"0.3.1"}')
-            return subprocess.CompletedProcess(args, 0 if forced else bump_code, "", "")
-
-        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "keycardai/gha-keycard-auth"}), \
-             patch.object(bump, "git", side_effect=git), \
-             patch.object(bump, "run", side_effect=run), \
-             patch.object(bump, "dependency_dist_changed", return_value=deps), \
-             patch.object(bump, "publish") as publish:
-            bump.main()
-            return clones, publish.call_args_list
-
-    def test_success(self):
-        clones, published = self.exercise()
-        self.assertEqual(len(clones), 1)
-        self.assertEqual(published[0].args[1], "0.3.1")
-
-    def test_no_release(self):
-        for code in (3, 21):
-            with self.subTest(code=code):
-                _, published = self.exercise(bump_code=code)
-                self.assertEqual(published, [])
+    def test_bump_files(self):
+        for increment, codes, deps, expected in [
+            ("auto", [0], False, True),
+            ("auto", [3], False, False),
+            ("auto", [21], False, False),
+            ("auto", [21, 0], True, True),
+            ("minor", [0], False, True),
+            ("patch", [21], True, False),
+        ]:
+            with self.subTest(increment=increment, codes=codes):
+                with patch.object(bump, "run", side_effect=[
+                    subprocess.CompletedProcess([], code, "", "") for code in codes
+                ]) as run, patch.object(bump, "dependency_dist_changed", return_value=deps):
+                    self.assertEqual(bump.bump_files(Path("."), increment), expected)
+                    args = ("cz", "bump", "--changelog", "--yes", "--version-files-only")
+                    extra = ("--increment", increment.upper()) if increment != "auto" else ()
+                    self.assertEqual(run.call_args_list[0].args, args + extra)
+                    if len(codes) == 2:
+                        self.assertEqual(run.call_args.args, args + ("--increment", "PATCH"))
 
     def test_bump_failure_is_not_swallowed(self):
-        with self.assertRaises(subprocess.CalledProcessError):
-            self.exercise(bump_code=1)
+        for codes in ([1], [21, 1]):
+            with self.subTest(codes=codes), patch.object(bump, "run", side_effect=[
+                subprocess.CompletedProcess([], code, "", "") for code in codes
+            ]), patch.object(bump, "dependency_dist_changed", return_value=True):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    bump.bump_files(Path("."), "auto")
 
-    def test_dependency_dist_change_forces_patch_when_cz_finds_no_release(self):
-        _, published = self.exercise(bump_code=21, deps=True)
-        self.assertEqual(published[0].args[1], "0.3.1")
+    def test_changelog_includes_dependency_updates_but_not_other_chores(self):
+        config = tomllib.loads((Path(__file__).parent.parent / ".cz.toml").read_text())
+        pattern = config["tool"]["commitizen"]["customize"]["changelog_pattern"]
+        for subject in ("chore(deps): bump runtime", "chore(deps)!: bump runtime", "fix: repair"):
+            self.assertIsNotNone(re.match(pattern, subject))
+        for subject in ("chore: tidy", "chore(dev): tidy", "chore(deps-dev): bump tools"):
+            self.assertIsNone(re.match(pattern, subject))
 
     def test_dependency_dist_detection(self):
         for commits, paths, expected in [
@@ -152,28 +132,133 @@ class ReleaseTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 bump.dependency_dist_changed(Path("."))
 
-    def test_push_race_retries_in_fresh_clone(self):
-        clones, published = self.exercise(push_codes=(1, 0))
-        self.assertEqual(len(set(clones)), 2)
-        self.assertEqual(len(published), 1)
+    def exercise_pr(self, existing="", changed=True, head="fix: something", failure=None):
+        commands = []
 
-    def test_push_failure_is_bounded(self):
-        with self.assertRaises(RuntimeError):
-            self.exercise(push_codes=(1, 1, 1))
+        def git(*args, cwd, check=True):
+            commands.append(args)
+            if args[0] == "clone":
+                (cwd / "package.json").write_text('{"version":"0.3.0"}')
+                (cwd / ".cz.toml").write_text(
+                    '[tool.commitizen]\nbump_message = "bump: gha-keycard-auth $current_version → $new_version"\n'
+                )
+            if args[0] == failure:
+                raise subprocess.CalledProcessError(1, args)
+            return subprocess.CompletedProcess(args, 0, head if args[0] == "log" else "", "")
 
-    def test_retry_recovers_release_after_bump_was_pushed(self):
-        _, published = self.exercise(head="bump: 0.2.0 → 0.3.0", tags="v0.3.0\n")
-        self.assertEqual(published[0].args[1], "0.3.0")
+        def files(cwd, increment):
+            self.assertEqual(increment, "minor")
+            (cwd / "package.json").write_text('{"version":"0.4.0"}')
+            return changed
 
-    def test_recovers_latest_release_before_skipping_non_release_commits(self):
-        _, published = self.exercise(
-            bump_code=21, head="docs: update usage", tags="v0.10.0\nv0.9.0\n",
-        )
-        self.assertEqual([call.args[1] for call in published], ["0.10.0"])
+        def run(*args, cwd, check=True):
+            commands.append(args)
+            if args[:3] == ("gh", "pr", "create") and failure == "pr":
+                raise subprocess.CalledProcessError(1, args)
+            return subprocess.CompletedProcess(args, 0, existing, "")
 
-    def test_recovers_latest_release_before_new_bump(self):
-        _, published = self.exercise(tags="v0.3.0\nv0.2.0\n")
-        self.assertEqual([call.args[1] for call in published], ["0.3.0", "0.3.1"])
+        with patch.dict("os.environ", {"GITHUB_REPOSITORY": "keycardai/gha-keycard-auth"}), \
+             patch.object(bump, "git", side_effect=git), \
+             patch.object(bump, "run", side_effect=run), \
+             patch.object(bump, "bump_files", side_effect=files), \
+             patch.object(bump, "publish") as publish:
+            bump.create_bump_pr("minor")
+            publish.assert_not_called()
+        return commands
+
+    def test_creates_bump_pr_without_pushing_main_or_tags(self):
+        commands = self.exercise_pr()
+        self.assertIn(("push", "origin", "HEAD:refs/heads/release/v0.4.0"), commands)
+        title = "bump: gha-keycard-auth 0.3.0 → 0.4.0"
+        self.assertIn(("commit", "-m", title), commands)
+        pr = next(args for args in commands if args[:3] == ("gh", "pr", "create"))
+        self.assertEqual(pr[pr.index("--title") + 1], title)
+        self.assertFalse(any("--force" in arg or "refs/tags/" in arg for args in commands for arg in args))
+
+    def test_reuses_existing_pr(self):
+        commands = self.exercise_pr(existing="https://example.com/pull/1\n")
+        self.assertFalse(any(args[0] in ("commit", "push") for args in commands))
+        self.assertFalse(any(args[:3] == ("gh", "pr", "create") for args in commands))
+
+    def test_no_pr_when_no_bump_or_head_already_bumped(self):
+        for kwargs in ({"changed": False}, {"head": "bump: 0.2.0 → 0.3.0"}):
+            commands = self.exercise_pr(**kwargs)
+            self.assertFalse(any(args[0] in ("commit", "push", "gh") for args in commands))
+
+    def test_pr_failures_propagate(self):
+        for failure in ("push", "pr"):
+            with self.subTest(failure=failure), self.assertRaises(subprocess.CalledProcessError):
+                self.exercise_pr(failure=failure)
+
+    def exercise_publish(self, existing=False, tagged_sha=None, push_fails=False):
+        commands = []
+        sha = "a" * 40
+        with tempfile.TemporaryDirectory() as directory:
+            cwd = Path(directory)
+            (cwd / "package.json").write_text('{"version":"0.3.1"}')
+
+            def git(*args, cwd, check=True):
+                commands.append(args)
+                output = ""
+                code = 0
+                if args[0] == "log":
+                    output = "bump: gha-keycard-auth 0.3.0 → 0.3.1"
+                if args[:2] == ("rev-parse", "HEAD"):
+                    output = sha
+                if args[:2] == ("rev-parse", "--verify"):
+                    code = 0 if existing else 1
+                if args[:2] == ("rev-parse", "v0.3.1^{commit}"):
+                    output = tagged_sha or sha
+                if args[0] == "push" and push_fails:
+                    raise subprocess.CalledProcessError(1, args)
+                return subprocess.CompletedProcess(args, code, output, "")
+
+            with patch.object(bump, "git", side_effect=git), \
+                 patch.object(bump, "publish") as publish, \
+                 patch.object(bump, "ensure_latest_release") as recover:
+                bump.publish_bump(cwd)
+                recover.assert_called_once_with(cwd)
+                publish.assert_called_once_with(cwd, "0.3.1")
+        return commands
+
+    def test_tags_the_exact_merged_commit(self):
+        commands = self.exercise_publish()
+        self.assertIn(("tag", "v0.3.1", "a" * 40), commands)
+        self.assertIn(("push", "origin", "refs/tags/v0.3.1:refs/tags/v0.3.1"), commands)
+
+    def test_existing_tag_recovers_release_without_retagging(self):
+        commands = self.exercise_publish(existing=True)
+        self.assertFalse(any(args[0] in ("tag", "push") for args in commands))
+
+    def test_tag_conflict_and_push_failure_propagate(self):
+        with self.assertRaisesRegex(ValueError, "Refusing to move immutable tag"):
+            self.exercise_publish(existing=True, tagged_sha="b" * 40)
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.exercise_publish(push_fails=True)
+
+    def test_non_bump_publish_only_recovers_latest_release(self):
+        cwd = Path(".")
+        with patch.object(bump, "git", return_value=subprocess.CompletedProcess([], 0, "docs: update", "")), \
+             patch.object(bump, "ensure_latest_release") as recover, patch.object(bump, "publish") as publish:
+            bump.publish_bump(cwd)
+            recover.assert_called_once_with(cwd)
+            publish.assert_not_called()
+
+    def test_latest_release_recovery(self):
+        for tags, expected in [("", []), ("v0.10.0\nv0.9.0\n", ["0.10.0"])]:
+            with patch.object(bump, "git", return_value=subprocess.CompletedProcess([], 0, tags, "")), \
+                 patch.object(bump, "publish") as publish:
+                bump.ensure_latest_release(Path("."))
+                self.assertEqual([call.args[1] for call in publish.call_args_list], expected)
+
+    def test_cli_modes(self):
+        with patch("sys.argv", ["bump.py", "--increment", "patch"]), \
+             patch.object(bump, "create_bump_pr") as create:
+            bump.main()
+            create.assert_called_once_with("patch")
+        with patch("sys.argv", ["bump.py", "--publish"]), patch.object(bump, "publish_bump") as publish:
+            bump.main()
+            publish.assert_called_once_with(Path.cwd())
 
 
 if __name__ == "__main__":
