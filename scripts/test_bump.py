@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 import tomllib
 import unittest
@@ -132,9 +133,10 @@ class BumpTests(unittest.TestCase):
 
 
 class RealCommitizenTests(unittest.TestCase):
-    def fixture(self, directory):
+    def fixture(self, directory, history=None):
         repo = Path(directory)
         env = {key: value for key, value in os.environ.items() if key not in ("GH_TOKEN", "GITHUB_TOKEN")}
+        env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env["PATH"]
         env.update(GIT_AUTHOR_NAME="Release fixture", GIT_AUTHOR_EMAIL="fixture@example.com",
                    GIT_COMMITTER_NAME="Release fixture", GIT_COMMITTER_EMAIL="fixture@example.com",
                    GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="commit.gpgsign", GIT_CONFIG_VALUE_0="false",
@@ -146,9 +148,10 @@ class RealCommitizenTests(unittest.TestCase):
         self.assertEqual(run("cz", "version").stdout.strip(), "4.19.2")
         run("git", "init", "--initial-branch=main")
         source = Path(__file__).parent.parent
-        (repo / ".cz.toml").write_text((source / ".cz.toml").read_text())
+        config = re.sub(r'(?m)^version = "[^"]+"$', 'version = "0.3.0"', (source / ".cz.toml").read_text())
+        (repo / ".cz.toml").write_text(config)
         (repo / "package.json").write_text('{"version":"0.3.0"}\n')
-        (repo / "CHANGELOG.md").write_text("## v0.3.0\n\n- Existing history\n")
+        (repo / "CHANGELOG.md").write_text(history or "## v0.3.0\n\n- Existing history\n")
         run("git", "add", ".cz.toml", "package.json", "CHANGELOG.md")
         run("git", "commit", "-m", "release: fixture")
         run("git", "tag", "v0.3.0")
@@ -173,6 +176,29 @@ class RealCommitizenTests(unittest.TestCase):
                 self.assertEqual(computed.returncode, 21 if expected is None else 0, computed.stderr)
                 if expected is not None:
                     self.assertEqual(computed.stdout.strip(), expected)
+
+    def test_real_changelog_preserves_history_without_duplication(self):
+        source = (Path(__file__).parent.parent / "CHANGELOG.md").read_text()
+        start = re.search(r"(?m)^## (?:v0\.3\.0|\[0\.3\.0\]).*$", source).start()
+        history = source[start:]
+        baseline = "# Changelog\n\n" + history
+        with tempfile.TemporaryDirectory() as directory:
+            repo, run = self.fixture(directory, baseline)
+            self.commit(repo, run, "feat: first release")
+            dry = run("cz", "bump", "--changelog", "--dry-run")
+            self.assertEqual((repo / "CHANGELOG.md").read_text(), baseline)
+            self.assertNotIn("## v0.3.0", dry.stdout)
+            run("cz", "bump", "--changelog", "--yes")
+            self.assertEqual((repo / "CHANGELOG.md").read_text().count(history), 1)
+            self.commit(repo, run, "feat: next release")
+            following = run("cz", "bump", "--changelog", "--dry-run")
+            self.assertNotIn("## v0.4.0", following.stdout)
+            run("cz", "bump", "--changelog", "--yes")
+            stored = (repo / "CHANGELOG.md").read_text()
+            self.assertEqual(stored.count(history), 1)
+            self.assertEqual(stored.count("Provider abstraction (`src/providers/`)"), 1)
+            for version in ("0.1.0", "0.2.0", "0.3.0", "0.4.0", "0.5.0"):
+                self.assertEqual(len(re.findall(r"(?m)^## v" + re.escape(version) + r"(?:\s|$)", stored)), 1)
 
 
 class PrepareTests(unittest.TestCase):
