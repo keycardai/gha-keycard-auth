@@ -37,16 +37,23 @@ override `KEYCARD_ENDPOINT`, which defaults to `https://api.keycard.ai`, and mus
 set `KEYCARD_ZONE_ID`. Authentication sends client credentials in the form body
 to `/service-account-token`. Management API paths start at the endpoint root.
 
-`bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
-resource, an application dependency, a version 1 token credential, and two
-version 2 token credentials in that zone. It only changes objects it owns and
-reuses existing Providers read-only.
-It adopts earlier acceptance Applications and Resources only when their exact
-identifier and name match and their description is empty. Fixtures persist
-between runs. The workflow checks a v1 exchange, v2 custom and default audiences,
-and an audience mismatch that must fail. Fork pull requests skip these tests.
-Dependabot pull requests also need `KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET`
-set as Dependabot secrets.
+`bash acceptance/zone.sh up` reuses an existing GitHub OIDC provider read-only or
+creates one if missing. It reuses one marked fixed-identifier application and
+resource for v1, with a dependency and one v1 credential. Setup refuses duplicate
+v1 credentials for the issuer and subject. It also creates a marked application
+and resource for each run ID and attempt, with a dependency and two v2 credentials.
+Local runs use a timestamp suffix. `zone.sh down` deletes this run's fixtures,
+including partial setups. It reads the state file set by `KEYCARD_STATE_FILE`,
+which defaults to `$RUNNER_TEMP/keycard-acceptance-$KEYCARD_ZONE_ID.json` or the
+same filename under `$HOME` outside Actions.
+The workflow runs `zone.sh sweep` before setup and always runs cleanup after
+setup starts. Sweep deletes marked acceptance applications and resources older
+than one hour, including leftovers from earlier designs. Cleanup and sweep never
+delete the stable v1 fixture, Providers, or unmarked objects.
+The workflow checks a v1 exchange, v2 custom and default audiences,
+and an audience mismatch that must fail.
+Fork pull requests skip these tests. Dependabot pull requests also need
+`KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET` set as Dependabot secrets.
 
 ## Common commands
 
