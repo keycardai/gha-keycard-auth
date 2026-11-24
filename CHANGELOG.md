@@ -1,20 +1,4 @@
-# Changelog
-
-All notable changes to `gha-keycard-auth` will be documented in this file.
-
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
-this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-This is a 0.x release line — the API may change between minor versions per
-[SemVer §4](https://semver.org/spec/v2.0.0.html#spec-item-4). Pin to a
-40-character commit SHA for any non-experimental use
-(`uses: keycardai/gha-keycard-auth@<sha> # v0.1.0`). Resolve the SHA for a
-given release via its git tag, e.g. `git rev-parse v0.1.0`, or from the
-GitHub release page.
-
-## [Unreleased]
-
-## [0.3.0] - 2026-05-26
+## v0.3.0 (2026-05-26)
 
 ### Added
 

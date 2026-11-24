@@ -1,4 +1,4 @@
-name: Release
+name: Merge to Main
 
 on:
   push:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-main
+  group: main
   cancel-in-progress: false
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
   # never on pull_request. This job runs code already merged via reviewed PRs.
   # Checkout uses persist-credentials: false. Only the bump step receives the
   # token, and the App is limited to contents:write.
-  release:
+  bump:
     if: "!startsWith(github.event.head_commit.message, 'bump:')"
     runs-on: ubuntu-latest
     steps:

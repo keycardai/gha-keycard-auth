@@ -192,12 +192,17 @@ write code.
 - Keep PRs focused — one concern per PR makes review and bisect easier.
 - The PR description should answer: **what changed**, **why**, **how it was
   tested**, and (for security-relevant changes) **what threat this addresses**.
-- Update `CHANGELOG.md` under `## [Unreleased]` for any user-visible change.
+- Commitizen generates `CHANGELOG.md` from commits. Do not add manual entries.
 
 ## Releases
 
 PR titles must follow Conventional Commits, such as `fix: reject invalid config`
 or `feat: add a provider`. Squash merges use the PR title as the commit subject.
+
+The release process follows `keycardai/go-sdk`. Commitizen uses `cz_customize`
+to generate changelog entries from `feat`, `fix`, `refactor`, `perf`, `test`,
+`build`, `ci`, and `revert` commits, including scoped commits.
+There is no manual Unreleased section. Published historical notes stay intact.
 
 On each push to `main`, the release workflow runs Commitizen 4.19.2 against
 commits since the last version tag. If no commits warrant a release, it exits
