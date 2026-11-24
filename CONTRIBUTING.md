@@ -44,8 +44,9 @@ reuses existing Providers read-only.
 It adopts earlier acceptance Applications and Resources only when their exact
 identifier and name match and their description is empty. Fixtures persist
 between runs. The workflow checks a v1 exchange, v2 custom and default audiences,
-and an audience mismatch that must fail. Fork and Dependabot pull requests skip
-these tests.
+and an audience mismatch that must fail. Fork pull requests skip these tests.
+Dependabot pull requests also need `KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET`
+set as Dependabot secrets.
 
 ## Common commands
 
