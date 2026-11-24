@@ -206,26 +206,12 @@ write code.
 
 ## Releases
 
-PR titles must follow Conventional Commits, such as `fix: reject invalid config`
-or `feat: add a provider`. Squash merges use the PR title as the commit subject.
-
-On each push to `main`, the release workflow runs Commitizen 4.19.2 against
-commits since the last version tag. If no commits warrant a release, it exits
-without changes. Otherwise, it:
-
-1. Updates `package.json`, `package-lock.json`, and `CHANGELOG.md`.
-2. Pushes a `bump:` commit and a new `v<MAJOR>.<MINOR>.<PATCH>` tag atomically
-   with the SDK release GitHub App token. A push race retries from fresh `main`.
-3. Creates a GitHub release with that version's changelog entry, the full tag
-   commit SHA, and a copy-paste `uses:` snippet pinned to that SHA.
-
-The workflow skips pushes whose head commit message starts with `bump:`.
-The App needs Contents write access and permission to bypass the `main` PR
-ruleset. Its credentials are `vars.SDK_RELEASE_APP_ID` and
-`secrets.SDK_RELEASE_PRIVATE_KEY`.
+Releases are tagged from `main` after CI passes.
+Update `package.json` and `CHANGELOG.md`, then tag the commit
+`v<MAJOR>.<MINOR>.<PATCH>`.
 
 During the `0.x` line, only immutable release tags (`v0.1.0`, `v0.2.0`, …)
-are published. Tags are never moved or recreated, since 0.x explicitly allows
+are published — no moving major or minor tags, since 0.x explicitly allows
 breaking changes between minor versions. Consumers SHA-pin and Dependabot or
 Renovate keeps the pin fresh.
 
