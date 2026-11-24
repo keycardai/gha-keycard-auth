@@ -92,10 +92,13 @@ Providers ship inside this action — there is no runtime plugin mechanism. See 
 
 ### Version 2 credentials
 
-For a v2 workload identity credential, set `client-id` and an `audience` that
-matches the credential's `allowed_audience`. The audience can be any string,
-not just a Zone URL. If the credential uses the default Zone issuer audience,
-omit `audience`. Leave `client-id` unset for v1 credentials.
+For a v2 workload identity credential, set `client-id`.
+The optional `audience` defaults to the Zone issuer.
+A custom value can be any string, not just a Zone URL.
+It must match the credential's `allowed_audience`.
+Leave `client-id` unset for v1 credentials.
+Do not use GitHub's default `https://github.com/<owner>` audience, because other
+services that receive those tokens could replay them.
 
 ```yaml
 permissions:
@@ -107,7 +110,6 @@ steps:
     with:
       zone-url: https://<id>.keycard.cloud
       client-id: ${{ vars.KEYCARD_CLIENT_ID }}
-      audience: https://github.com/acme-corp
       credentials: |
         - resource: urn:fly:app:my-app:deploy-token
           type: env
