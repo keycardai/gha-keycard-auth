@@ -19,25 +19,33 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      KEYCARD_ENDPOINT: https://api.keycard.ai
+      KEYCARD_ZONE_ID: fdqsqy07r9m1t80d7ipejmtpw4
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Ensure acceptance fixtures
+      - name: Sweep stale acceptance fixtures
+        timeout-minutes: 10
+        run: bash acceptance/zone.sh sweep
+        env:
+          KEYCARD_CLIENT_ID: ${{ secrets.KEYCARD_CLIENT_ID }}
+          KEYCARD_CLIENT_SECRET: ${{ secrets.KEYCARD_CLIENT_SECRET }}
+
+      - name: Create acceptance fixtures
         id: provision
         timeout-minutes: 10
         run: bash acceptance/zone.sh up
         env:
           KEYCARD_CLIENT_ID: ${{ secrets.KEYCARD_CLIENT_ID }}
           KEYCARD_CLIENT_SECRET: ${{ secrets.KEYCARD_CLIENT_SECRET }}
-          KEYCARD_ENDPOINT: https://api.keycard.ai
-          KEYCARD_ZONE_ID: fdqsqy07r9m1t80d7ipejmtpw4
 
       - name: Exchange with v1 credential
         uses: ./
         with:
           zone-url: ${{ steps.provision.outputs.zone_issuer }}
           credentials: |
-            - resource: ${{ steps.provision.outputs.resource_identifier }}
+            - resource: ${{ steps.provision.outputs.v1_resource_identifier }}
               type: env
               env-name: ACCEPTANCE_V1_TOKEN
 
@@ -46,4 +54,65 @@ jobs:
         env:
           ACCEPTANCE_TOKEN: ${{ env.ACCEPTANCE_V1_TOKEN }}
           EXPECTED_ISSUER: ${{ steps.provision.outputs.zone_issuer }}
+          EXPECTED_RESOURCE: ${{ steps.provision.outputs.v1_resource_identifier }}
+
+      - name: Exchange with custom audience
+        uses: ./
+        with:
+          zone-url: ${{ steps.provision.outputs.zone_issuer }}
+          client-id: ${{ steps.provision.outputs.custom_client_id }}
+          audience: ${{ steps.provision.outputs.custom_audience }}
+          credentials: |
+            - resource: ${{ steps.provision.outputs.resource_identifier }}
+              type: env
+              env-name: ACCEPTANCE_CUSTOM_TOKEN
+
+      - name: Check custom-audience token
+        run: node acceptance/assert-token.mjs
+        env:
+          ACCEPTANCE_TOKEN: ${{ env.ACCEPTANCE_CUSTOM_TOKEN }}
+          EXPECTED_ISSUER: ${{ steps.provision.outputs.zone_issuer }}
           EXPECTED_RESOURCE: ${{ steps.provision.outputs.resource_identifier }}
+
+      - name: Exchange with default audience
+        uses: ./
+        with:
+          zone-url: ${{ steps.provision.outputs.zone_issuer }}
+          client-id: ${{ steps.provision.outputs.default_client_id }}
+          credentials: |
+            - resource: ${{ steps.provision.outputs.resource_identifier }}
+              type: env
+              env-name: ACCEPTANCE_DEFAULT_TOKEN
+
+      - name: Check default-audience token
+        run: node acceptance/assert-token.mjs
+        env:
+          ACCEPTANCE_TOKEN: ${{ env.ACCEPTANCE_DEFAULT_TOKEN }}
+          EXPECTED_ISSUER: ${{ steps.provision.outputs.zone_issuer }}
+          EXPECTED_RESOURCE: ${{ steps.provision.outputs.resource_identifier }}
+
+      - name: Reject custom credential without its audience
+        id: wrong-audience
+        continue-on-error: true
+        uses: ./
+        with:
+          zone-url: ${{ steps.provision.outputs.zone_issuer }}
+          client-id: ${{ steps.provision.outputs.custom_client_id }}
+          credentials: |
+            - resource: ${{ steps.provision.outputs.resource_identifier }}
+              type: env
+              env-name: ACCEPTANCE_WRONG_AUDIENCE_TOKEN
+
+      - name: Check audience mismatch failed
+        if: steps.wrong-audience.outcome != 'failure'
+        run: |
+          echo "Expected the audience mismatch exchange to fail" >&2
+          exit 1
+
+      - name: Delete acceptance fixtures
+        if: always() && steps.provision.outcome != '' && steps.provision.outcome != 'skipped'
+        timeout-minutes: 10
+        run: bash acceptance/zone.sh down
+        env:
+          KEYCARD_CLIENT_ID: ${{ secrets.KEYCARD_CLIENT_ID }}
+          KEYCARD_CLIENT_SECRET: ${{ secrets.KEYCARD_CLIENT_SECRET }}

@@ -15,6 +15,7 @@ You need:
 
 - Node.js **24.x** (matches the `node24` action runtime).
 - `npm` 10+.
+- Bash 4.4+ and jq 1.6+ for the acceptance helper tests in `npm test`.
 
 ```sh
 git clone git@github.com:keycardai/gha-keycard-auth.git
@@ -36,14 +37,23 @@ override `KEYCARD_ENDPOINT`, which defaults to `https://api.keycard.ai`, and mus
 set `KEYCARD_ZONE_ID`. Authentication sends client credentials in the form body
 to `/service-account-token`. Management API paths start at the endpoint root.
 
-`bash acceptance/zone.sh up` ensures a GitHub OIDC provider, an application, a
-resource, an application dependency, a version 1 token credential, and two
-version 2 token credentials in that
-zone. It only changes objects it owns and reuses existing Providers read-only.
-It adopts earlier acceptance Applications and Resources only when their exact
-identifier and name match and their description is empty. Fixtures persist
-between runs. The workflow checks a version 1 exchange with the default audience.
-Fork pull requests skip these tests.
+`bash acceptance/zone.sh up` reuses an existing GitHub OIDC provider read-only or
+creates one if missing. It reuses one marked fixed-identifier application and
+resource for v1, with a dependency and one v1 credential. Setup refuses duplicate
+v1 credentials for the issuer and subject. It also creates a marked application
+and resource for each run ID and attempt, with a dependency and two v2 credentials.
+Local runs use a timestamp suffix. `zone.sh down` deletes this run's fixtures,
+including partial setups. It reads the state file set by `KEYCARD_STATE_FILE`,
+which defaults to `$RUNNER_TEMP/keycard-acceptance-$KEYCARD_ZONE_ID.json` or the
+same filename under `$HOME` outside Actions.
+The workflow runs `zone.sh sweep` before setup and always runs cleanup after
+setup starts. Sweep deletes marked acceptance applications and resources older
+than one hour, including leftovers from earlier designs. Cleanup and sweep never
+delete the stable v1 fixture, Providers, or unmarked objects.
+The workflow checks a v1 exchange, v2 custom and default audiences,
+and an audience mismatch that must fail.
+Fork pull requests skip these tests. Dependabot pull requests also need
+`KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET` set as Dependabot secrets.
 
 ## Common commands
 
@@ -192,47 +202,16 @@ write code.
 - Keep PRs focused — one concern per PR makes review and bisect easier.
 - The PR description should answer: **what changed**, **why**, **how it was
   tested**, and (for security-relevant changes) **what threat this addresses**.
-- Commitizen generates `CHANGELOG.md` from commits. Do not add manual entries.
+- Update `CHANGELOG.md` under `## [Unreleased]` for any user-visible change.
 
 ## Releases
 
-PR titles must follow Conventional Commits, such as `fix: reject invalid config`
-or `feat: add a provider`. Squash merges use the PR title as the commit subject.
-
-The release process follows `keycardai/go-sdk`. Commitizen uses `cz_customize`
-to generate changelog entries from `feat`, `fix`, `refactor`, `perf`, `test`,
-`build`, `ci`, and `revert` commits, including scoped commits.
-It also includes `chore(deps)` commits. Other `chore` commits stay excluded.
-There is no manual Unreleased section. Published historical notes stay intact.
-
-Run the Bump Version workflow on `main` to open a release PR.
-It runs Commitizen 4.19.2 against commits since the last version tag.
-The optional increment input forces a major, minor, or patch bump.
-If no commits warrant a release, the automatic mode exits without changes.
-Otherwise, it updates `package.json`, `package-lock.json`, and `CHANGELOG.md`.
-It pushes a `release/v<version>` branch and opens a PR with the bump message
-as its title. An existing open PR for that version is reused.
-
-A `chore(deps)` commit that changes `dist/` triggers a patch release even without
-other release-worthy commits. Dev-only dependency updates do not release.
-
-Both workflows use only `GITHUB_TOKEN`. Enable the repository Actions setting
-"Allow GitHub Actions to create and approve pull requests".
-GitHub does not start PR workflows for PRs opened with `GITHUB_TOKEN`.
-Close and reopen the PR with a user account to start its checks.
-Review it and squash merge with its `bump:` title unchanged.
-
-The Publish Release workflow runs when a push to `main` has a `bump:`
-head commit. It tags that commit and creates the GitHub release with its
-changelog entry, full tag SHA, and copy-paste SHA-pinned `uses:` snippet.
-Rerun it after a failure, or dispatch it on `main` to recover a tag without
-a release. An existing release stays unchanged. Tags never move.
-
-Automatic release on push is planned once the SDK Release App can bypass
-the `main` PR ruleset. That version is preserved on `devin/release-auto-on-push`.
+Releases are tagged from `main` after CI passes.
+Update `package.json` and `CHANGELOG.md`, then tag the commit
+`v<MAJOR>.<MINOR>.<PATCH>`.
 
 During the `0.x` line, only immutable release tags (`v0.1.0`, `v0.2.0`, …)
-are published. Tags are never moved or recreated, since 0.x explicitly allows
+are published — no moving major or minor tags, since 0.x explicitly allows
 breaking changes between minor versions. Consumers SHA-pin and Dependabot or
 Renovate keeps the pin fresh.
 

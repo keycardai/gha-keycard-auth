@@ -37,12 +37,17 @@ export type CredentialSpec =
 export interface Inputs {
   zoneUrl: string;
   audience: string;
+  clientId?: string;
   credentials: CredentialSpec[];
 }
 
 export function parseInputs(): Inputs {
   const zoneUrl = parseZoneUrl(required("zone-url"));
   const audience = parseAudience(core.getInput("audience").trim(), zoneUrl);
+  const clientId = core.getInput("client-id").trim() || undefined;
+  if (clientId && /\s/.test(clientId)) {
+    throw new Error("client-id must not contain whitespace");
+  }
   const credentialsRaw = required("credentials");
 
   let parsed: unknown;
@@ -67,7 +72,7 @@ export function parseInputs(): Inputs {
 
   const credentials = parsed.map((entry, i) => parseCredential(entry, i));
 
-  return { zoneUrl, audience, credentials };
+  return { zoneUrl, audience, clientId, credentials };
 }
 
 /**
@@ -99,25 +104,12 @@ function parseZoneUrl(raw: string): string {
 }
 
 /**
- * H2 mitigation — if an explicit audience is provided, require it to share
- * the same origin as the zone URL. This prevents a workflow author from
- * minting a GHA OIDC token with an arbitrary audience and exfiltrating it.
+ * H2 previously required a same-origin audience. It is now enforced by H1's
+ * token endpoint origin check plus the exchange's no-redirect policy.
+ * A workflow can already mint a GitHub token for any audience.
  */
 function parseAudience(raw: string, zoneUrl: string): string {
-  if (!raw) return zoneUrl;
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new Error(`audience is not a valid URL: ${raw}`);
-  }
-  const zone = new URL(zoneUrl);
-  if (parsed.origin !== zone.origin) {
-    throw new Error(
-      `audience must share origin with zone-url (audience=${parsed.origin}, zone=${zone.origin})`,
-    );
-  }
-  return raw;
+  return raw || zoneUrl;
 }
 
 function parseCredential(entry: unknown, index: number): CredentialSpec {

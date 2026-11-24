@@ -32,9 +32,6 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Test release scripts
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
-
       - name: Build dist
         run: npm run build
 

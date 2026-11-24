@@ -70,6 +70,7 @@ function makeExchange(inputs: Inputs) {
     oidcToken: string;
     resource: string;
     scope?: string;
+    clientId?: string;
   }): Promise<ExchangeOutcome> => {
     const keycardToken = await exchangeForResource(args);
     const spec = specByResource.get(args.resource);
