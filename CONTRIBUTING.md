@@ -202,18 +202,22 @@ write code.
 - Keep PRs focused — one concern per PR makes review and bisect easier.
 - The PR description should answer: **what changed**, **why**, **how it was
   tested**, and (for security-relevant changes) **what threat this addresses**.
-- Update `CHANGELOG.md` under `## [Unreleased]` for any user-visible change.
+- Commitizen generates `CHANGELOG.md` from commits. Do not add manual entries.
 
 ## Releases
 
-Releases are tagged from `main` after CI passes.
-Update `package.json` and `CHANGELOG.md`, then tag the commit
-`v<MAJOR>.<MINOR>.<PATCH>`.
+Pushes to `main` run `.github/workflows/main.yml`, unless the head commit
+starts with `bump:`. The workflow checks out the repository with the SDK
+Release App token, installs Commitizen, and runs `python scripts/bump.py`.
+Commitizen updates `.cz.toml`, `package.json`, and `CHANGELOG.md` from commits.
+The script pushes the bump commit and a `v<version>` tag.
+Set `vars.SDK_RELEASE_APP_ID` and `secrets.SDK_RELEASE_PRIVATE_KEY` for the App.
+It needs Contents write access and a bypass for the `main` ruleset.
 
-During the `0.x` line, only immutable release tags (`v0.1.0`, `v0.2.0`, …)
-are published — no moving major or minor tags, since 0.x explicitly allows
-breaking changes between minor versions. Consumers SHA-pin and Dependabot or
-Renovate keeps the pin fresh.
+During the `0.x` line, only immutable `v0.x.y` tags are published.
+Breaking changes can land between minor versions.
+Consumers pin to the tag's commit SHA. Dependabot or Renovate updates the pin.
+Fetch tags, then run `git rev-parse 'v0.1.0^{commit}'` to resolve a tag's commit SHA.
 
 ## Questions
 

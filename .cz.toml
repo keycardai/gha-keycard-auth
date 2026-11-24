@@ -1,0 +1,14 @@
+[tool.commitizen]
+name = "cz_customize"
+version = "0.3.0"
+version_files = ['package.json:"version"']
+tag_format = "v${version}"
+update_changelog_on_bump = true
+bump_message = "bump: gha-keycard-auth $current_version → $new_version"
+major_version_zero = true
+
+[tool.commitizen.customize]
+# The optional (\(.+\))? scope group is required: without it a scoped subject like
+# "feat(oauth): ..." does not match, so cz reports no unreleased changes and the release
+# is silently skipped. Literal string so the regex backslashes are not TOML-escaped.
+changelog_pattern = '^(feat|fix|refactor|perf|test|build|ci|revert)(\(.+\))?(!)?:'
