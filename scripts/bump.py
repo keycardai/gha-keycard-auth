@@ -60,6 +60,20 @@ def ensure_latest_release(cwd: Path) -> None:
         publish(cwd, tags[0][1:])
 
 
+def dependency_dist_changed(cwd: Path) -> bool:
+    latest = git("describe", "--tags", "--abbrev=0", cwd=cwd, check=False)
+    revision = f"{latest.stdout.strip()}..HEAD" if latest.returncode == 0 else "HEAD"
+    commits = git("log", "--format=%H%x00%s", revision, cwd=cwd).stdout.splitlines()
+    for commit in commits:
+        sha, subject = commit.split("\0", 1)
+        if re.match(r"^chore\(deps\)!?:", subject):
+            paths = git("diff-tree", "--root", "--no-commit-id", "--name-only", "-r",
+                        sha, "--", "dist/", cwd=cwd).stdout
+            if paths.strip():
+                return True
+    return False
+
+
 def main() -> None:
     repository = os.environ["GITHUB_REPOSITORY"]
     server = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
@@ -75,8 +89,11 @@ def main() -> None:
                 return
             bump = run("cz", "bump", "--changelog", "--yes", cwd=cwd, check=False)
             if bump.returncode in (3, 21):
-                print("No release-worthy commits. Skipping release.")
-                return
+                if not dependency_dist_changed(cwd):
+                    print("No release-worthy commits. Skipping release.")
+                    return
+                bump = run("cz", "bump", "--changelog", "--yes", "--increment", "PATCH",
+                           cwd=cwd, check=False)
             bump.check_returncode()
             version = json.loads((cwd / "package.json").read_text())["version"]
             tag = f"v{version}"

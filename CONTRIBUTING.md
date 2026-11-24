@@ -209,6 +209,9 @@ without changes. Otherwise, it:
 3. Creates a GitHub release with that version's changelog entry, the full tag
    commit SHA, and a copy-paste `uses:` snippet pinned to that SHA.
 
+A `chore(deps)` commit that changes `dist/` triggers a patch release even without
+other release-worthy commits. Dev-only dependency updates do not release.
+
 The workflow skips pushes whose head commit message starts with `bump:`.
 The App needs Contents write access and permission to bypass the `main` PR
 ruleset. Its credentials are `vars.SDK_RELEASE_APP_ID` and

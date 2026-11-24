@@ -58,7 +58,7 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaises(subprocess.CalledProcessError):
                     bump.publish(cwd, "0.3.1")
 
-    def exercise(self, bump_code=0, push_codes=(0,), head="fix: something", tags=""):
+    def exercise(self, bump_code=0, push_codes=(0,), head="fix: something", tags="", deps=False):
         pushes = iter(push_codes)
         clones = []
 
@@ -80,16 +80,19 @@ class ReleaseTests(unittest.TestCase):
             return result
 
         def run(*args, cwd, check=True):
-            self.assertEqual(args, ("cz", "bump", "--changelog", "--yes"))
+            forced = args[-2:] == ("--increment", "PATCH")
+            self.assertEqual(args, ("cz", "bump", "--changelog", "--yes") +
+                             (("--increment", "PATCH") if forced else ()))
             if tags:
                 publish.assert_called_with(cwd, tags.splitlines()[0][1:])
-            if bump_code == 0:
+            if bump_code == 0 or forced:
                 (cwd / "package.json").write_text('{"version":"0.3.1"}')
-            return subprocess.CompletedProcess(args, bump_code, "", "")
+            return subprocess.CompletedProcess(args, 0 if forced else bump_code, "", "")
 
         with patch.dict("os.environ", {"GITHUB_REPOSITORY": "keycardai/gha-keycard-auth"}), \
              patch.object(bump, "git", side_effect=git), \
              patch.object(bump, "run", side_effect=run), \
+             patch.object(bump, "dependency_dist_changed", return_value=deps), \
              patch.object(bump, "publish") as publish:
             bump.main()
             return clones, publish.call_args_list
@@ -108,6 +111,46 @@ class ReleaseTests(unittest.TestCase):
     def test_bump_failure_is_not_swallowed(self):
         with self.assertRaises(subprocess.CalledProcessError):
             self.exercise(bump_code=1)
+
+    def test_dependency_dist_change_forces_patch_when_cz_finds_no_release(self):
+        _, published = self.exercise(bump_code=21, deps=True)
+        self.assertEqual(published[0].args[1], "0.3.1")
+
+    def test_dependency_dist_detection(self):
+        for commits, paths, expected in [
+            ("", "", False),
+            ("abc\0chore(deps): bump packages\n", "dist/index.js\n", True),
+            ("abc\0chore(deps): bump dev tools\n", "", False),
+            ("abc\0docs: update docs\n", "dist/index.js\n", False),
+            ("abc\0chore(deps-dev): bump tools\n", "dist/index.js\n", False),
+        ]:
+            with self.subTest(commits=commits):
+                def git(*args, cwd, check=True):
+                    output = {"describe": "v0.3.0\n", "log": commits, "diff-tree": paths}[args[0]]
+                    if args[0] == "log":
+                        self.assertEqual(args[-1], "v0.3.0..HEAD")
+                    if args[0] == "diff-tree":
+                        self.assertEqual(args[-2:], ("--", "dist/"))
+                    return subprocess.CompletedProcess(args, 0, output, "")
+                with patch.object(bump, "git", side_effect=git):
+                    self.assertEqual(bump.dependency_dist_changed(Path(".")), expected)
+
+    def test_dependency_detection_without_tags(self):
+        with patch.object(bump, "git", side_effect=[
+            subprocess.CompletedProcess([], 128, "", "no tags"),
+            subprocess.CompletedProcess([], 0, "", ""),
+        ]) as git:
+            self.assertFalse(bump.dependency_dist_changed(Path(".")))
+            self.assertEqual(git.call_args.args[-1], "HEAD")
+
+    def test_dependency_diff_failure_is_not_swallowed(self):
+        with patch.object(bump, "git", side_effect=[
+            subprocess.CompletedProcess([], 0, "v0.3.0\n", ""),
+            subprocess.CompletedProcess([], 0, "abc\0chore(deps): update\n", ""),
+            subprocess.CalledProcessError(1, "git diff-tree"),
+        ]):
+            with self.assertRaises(subprocess.CalledProcessError):
+                bump.dependency_dist_changed(Path("."))
 
     def test_push_race_retries_in_fresh_clone(self):
         clones, published = self.exercise(push_codes=(1, 0))
