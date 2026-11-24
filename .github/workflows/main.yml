@@ -37,6 +37,8 @@ jobs:
       - name: Install commitizen
         run: pip install commitizen==4.19.2
 
+      # The App token bypasses the main ruleset. Checkout does not persist it,
+      # commitizen is pinned, and bump.py passes it only to git push, never to cz.
       - name: Bump version
         run: python scripts/bump.py
         env:
