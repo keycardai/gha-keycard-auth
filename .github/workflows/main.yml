@@ -4,67 +4,37 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: read
-
 concurrency:
   group: main
   cancel-in-progress: false
 
 jobs:
-  prepare:
+  bump:
     if: "!startsWith(github.event.head_commit.message, 'bump:')"
-    uses: ./.github/workflows/release-prepare.yml
-    with:
-      attempt: 1
-
-  push:
-    needs: prepare
-    if: needs.prepare.outputs.tag != ''
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    uses: ./.github/workflows/release-push.yml
-    with:
-      attempt: 1
-      tag: ${{ needs.prepare.outputs.tag }}
-    secrets:
-      SDK_RELEASE_PRIVATE_KEY: ${{ secrets.SDK_RELEASE_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-  prepare-retry:
-    needs: push
-    if: needs.push.outputs.retry == 'true'
-    uses: ./.github/workflows/release-prepare.yml
-    with:
-      attempt: 2
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.12"
 
-  push-retry:
-    needs: prepare-retry
-    if: needs.prepare-retry.outputs.tag != ''
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release-push.yml
-    with:
-      attempt: 2
-      tag: ${{ needs.prepare-retry.outputs.tag }}
-    secrets:
-      SDK_RELEASE_PRIVATE_KEY: ${{ secrets.SDK_RELEASE_PRIVATE_KEY }}
+      - name: Install release dependencies
+        run: python -m pip install --require-hashes --no-deps -r scripts/requirements-release.txt
 
-  prepare-final:
-    needs: push-retry
-    if: needs.push-retry.outputs.retry == 'true'
-    uses: ./.github/workflows/release-prepare.yml
-    with:
-      attempt: 3
+      - name: Generate GitHub App token
+        id: token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.SDK_RELEASE_APP_ID }}
+          private-key: ${{ secrets.SDK_RELEASE_PRIVATE_KEY }}
 
-  push-final:
-    needs: prepare-final
-    if: needs.prepare-final.outputs.tag != ''
-    permissions:
-      contents: write
-    uses: ./.github/workflows/release-push.yml
-    with:
-      attempt: 3
-      tag: ${{ needs.prepare-final.outputs.tag }}
-      final: true
-    secrets:
-      SDK_RELEASE_PRIVATE_KEY: ${{ secrets.SDK_RELEASE_PRIVATE_KEY }}
+      - name: Bump version
+        run: python scripts/bump.py
+        env:
+          GH_TOKEN: ${{ steps.token.outputs.token }}

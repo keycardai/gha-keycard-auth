@@ -33,6 +33,21 @@ updates:
           - patch
           - minor
 
+  - package-ecosystem: pip
+    directory: "/scripts"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - pip
+    commit-message:
+      prefix: chore
+      include: scope
+
   # GitHub Actions used in our own workflows (e.g. actions/checkout, setup-node).
   # We SHA-pin these; Dependabot will bump the SHA + version-comment.
   - package-ecosystem: github-actions

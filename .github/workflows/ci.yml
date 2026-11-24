@@ -37,7 +37,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install release test dependencies
-        run: python3 -m pip install commitizen==4.19.2
+        run: python3 -m pip install --require-hashes --no-deps -r scripts/requirements-release.txt
 
       - name: Test release scripts
         run: python3 -m unittest discover -s scripts -p 'test_*.py'

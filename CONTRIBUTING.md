@@ -207,14 +207,15 @@ write code.
 ## Releases
 
 Pushes to `main` run `.github/workflows/main.yml`, unless the head commit
-starts with `bump:`. The workflow installs Commitizen 4.19.2 and runs
-`python scripts/bump.py prepare` in a job without App secrets.
-Checkout does not persist credentials. Preparation writes a Git bundle of the release refs.
-A separate job downloads the bundle and creates the SDK Release App token.
-It imports only Git objects and refs into a fresh bare clone.
-It ignores the prepared checkout's config and hooks. It never runs Commitizen.
-The jobs use separate runners, so no Commitizen ancestor holds the App token.
-Only Git push commands receive that token.
+starts with `bump:`. One job installs Commitizen 4.19.2 from
+`scripts/requirements-release.txt` with `--require-hashes --no-deps`.
+CI uses the same file for release tests. The job runs `python scripts/bump.py`.
+Checkout does not persist credentials. Only Git push subprocesses receive
+the SDK Release App token. Those pushes disable hooks and clear credential
+helpers before using `gh auth git-credential`.
+Commitizen runs without the token in its environment. This is not a sandbox.
+Release tools share the job and can inspect parent processes.
+The hash lock fixes the reviewed artifacts, not their behavior.
 Commitizen updates `.cz.toml`, `package.json`, and `CHANGELOG.md` from commits.
 `feat` and `fix` commits increment the version. Breaking changes also increment it.
 A `chore(deps)` commit that changes `dist/` triggers a PATCH release.
@@ -223,8 +224,8 @@ Commits without an increment skip cleanly, including `ci`, `test`, `build`,
 `refactor`, `perf`, and `revert` commits without a breaking change.
 
 The script pushes the bump commit and its `vX.Y.Z` tag atomically.
-A rejected push starts a new token-free job from the latest `origin/main`.
-It reruns the bump in a fresh checkout. The workflow allows three attempts.
+A rejected push resets the checkout to the latest `origin/main`.
+The script deletes the local release tag and reruns the bump, up to three attempts.
 If all attempts fail, the job fails. Semver tags never move.
 Each release also moves its major tag, such as `v0` or `v1`, to the release commit.
 Only that tag uses a forced push. If that push fails, the job fails.
@@ -232,6 +233,13 @@ Protect only `v*.*.*` tags. Keep major tags such as `v0` movable.
 If `main` still ends at the bump commit, rerun the job to repair its major tag.
 Set `vars.SDK_RELEASE_APP_ID` and `secrets.SDK_RELEASE_PRIVATE_KEY` for the App.
 It needs Contents write access and a bypass for the `main` ruleset.
+
+Dependabot updates the pip requirements in `/scripts`.
+From `scripts/`, regenerate the lock with pip-tools 7.5.2 on Python 3.12 for Linux:
+
+```sh
+pip-compile --generate-hashes --strip-extras --no-emit-index-url --no-emit-trusted-host --output-file requirements-release.txt requirements-release.in
+```
 
 Breaking changes can land between minor versions during the `0.x` line.
 Consumers can use `@v0` to follow releases or pin a semver tag's commit SHA.

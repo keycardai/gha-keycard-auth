@@ -150,6 +150,12 @@ uses: keycardai/gha-keycard-auth@<40-char-sha>   # v0.1.0
 uses the `# v0.1.0` comment to update the SHA when a new version tag lands.
 Fetch tags, then run `git rev-parse 'v0.1.0^{commit}'` to resolve a tag's commit SHA.
 
+A single release job installs Commitizen from a hash-locked requirements file.
+Checkout does not persist credentials. Only Git push subprocesses receive the
+App token. They disable hooks and use a controlled credential helper.
+Commitizen runs without the token in its environment. This is not a sandbox.
+Release tools share the job and can inspect parent processes.
+
 ## Contributing
 
 External contributions welcome via forks and pull requests. See [CONTRIBUTING](./CONTRIBUTING.md). For vulnerabilities see [SECURITY](./SECURITY.md) — please do not file public issues for security reports.
