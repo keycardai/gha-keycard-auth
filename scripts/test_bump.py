@@ -30,9 +30,10 @@ class CommandTests(unittest.TestCase):
     def test_push_gets_the_token_and_credential_helper(self):
         with patch.dict(os.environ, {"GITHUB_TOKEN": "other-token"}), \
              patch.object(bump.subprocess, "run", return_value=result()) as run:
-            bump.git("push", "--atomic", "origin", "main", "refs/tags/v0.4.0", token="app-token")
+            bump.clean_git("push", "--atomic", "origin", "main", "refs/tags/v0.4.0", token="app-token")
             self.assertEqual(run.call_args.args[0], [
-                "git", "-c", "credential.helper=", "-c", "credential.helper=!gh auth git-credential",
+                "git", "-c", "core.hooksPath=/dev/null", "-c", "credential.helper=",
+                "-c", "credential.helper=!gh auth git-credential",
                 "push", "--atomic", "origin", "main", "refs/tags/v0.4.0",
             ])
             self.assertEqual(run.call_args.kwargs["env"]["GH_TOKEN"], "app-token")
@@ -124,115 +125,108 @@ class BumpTests(unittest.TestCase):
             increment = next((value for regex, value in mapping.items() if re.match(regex, prefix)), None)
             self.assertEqual(increment, expected)
 
-    def test_major_tag_refspec_is_the_only_forced_push(self):
-        for tag, major in [("v0.4.0", "v0"), ("v1.2.3", "v1")]:
-            with patch.object(bump, "git") as git:
-                bump.move_major_tag(tag, "app-token")
-                self.assertEqual(git.call_args_list[0].args, ("tag", "--force", major, f"{tag}^{{commit}}"))
-                self.assertEqual(git.call_args.args, ("push", "origin", f"+refs/tags/{major}:refs/tags/{major}"))
-                self.assertEqual(git.call_args.kwargs, {"token": "app-token"})
+    def test_only_pushes_may_receive_the_token(self):
+        with self.assertRaises(ValueError):
+            bump.clean_git("fetch", "origin", "main", token="app-token")
 
 
-class ReleaseTests(unittest.TestCase):
-    def exercise(self, push_codes=(0,), tags=("v0.4.0",), heads=("feat: support v2",), dirty=False,
-                 major_fails=False, command_fails=None, remote_tag=False, mismatched=False):
-        pushes = iter(push_codes)
-        head_iter = iter(heads)
-        tag_iter = iter(tags)
+class PrepareTests(unittest.TestCase):
+    def test_preparation_rejects_a_token_before_running_any_command(self):
+        with patch.dict(os.environ, {"GH_TOKEN": "app-token"}), patch.object(bump, "git") as git:
+            with self.assertRaisesRegex(RuntimeError, "token-free job"):
+                bump.prepare(Path("release.bundle"))
+            git.assert_not_called()
+
+    def test_preparation_and_clean_skip(self):
+        for tag in (None, "v0.4.0"):
+            def git(*args, **kwargs):
+                if args[0] == "rev-parse":
+                    return result("a" * 40)
+                return result()
+            with patch.dict(os.environ, {}, clear=True), patch.object(bump, "git", side_effect=git) as run, \
+                 patch.object(bump, "run_bump", return_value=tag):
+                self.assertEqual(bump.prepare(Path("release.bundle")), tag)
+                commands = [call.args for call in run.call_args_list]
+                self.assertIn(("merge", "--ff-only", "origin/main"), commands)
+                self.assertEqual(any(args[0] == "bundle" for args in commands), tag is not None)
+                self.assertFalse(any(args[0] == "push" for args in commands))
+
+    def test_workflows_keep_app_secrets_out_of_preparation(self):
+        workflows = Path(__file__).parent.parent / ".github/workflows"
+        prepare = (workflows / "release-prepare.yml").read_text()
+        self.assertNotIn("secrets:", prepare)
+        self.assertNotIn("GH_TOKEN", prepare)
+        self.assertNotIn("create-github-app-token", prepare)
+        push = (workflows / "release-push.yml").read_text()
+        self.assertNotIn("pip install", push)
+        self.assertNotIn("cz bump", push)
+        self.assertIn("scripts/bump.py push", push)
+
+
+class PublishTests(unittest.TestCase):
+    def exercise(self, *, rejected=False, advanced=False, major_fails=False, bad_paths=False,
+                 existing=None, bad_tag=False, tag="v0.4.0"):
         self.commands = []
 
-        def git(*args, token=None, check=True):
+        def clean_git(*args, cwd=None, token=None, check=True):
             self.commands.append(args)
-            if args[0] == "push":
-                self.assertEqual(token, "app-token")
-            else:
-                self.assertIsNone(token)
-            if args[0] == command_fails:
-                raise subprocess.CalledProcessError(1, args)
-            if args[0] == "status":
-                return result(" M README.md\n" if dirty else "")
+            self.assertEqual(token, "app-token" if args[0] == "push" else None)
+            if args[0] != "clone":
+                self.assertEqual(cwd.name, "repository.git")
+            if args[0] == "rev-parse":
+                if "--verify" in args:
+                    return result(existing or "", code=0 if existing else 128)
+                return result({
+                    "refs/prepared/main^{commit}": "new",
+                    "refs/prepared/tag^{commit}": "bad" if bad_tag else "new",
+                    "refs/heads/main": "advanced" if advanced else "old",
+                    "refs/prepared/main^": "old",
+                }[args[1]])
+            if args[0] == "show":
+                return result('[tool.commitizen]\nversion="' + tag[1:] + '"')
             if args[0] == "log":
-                return result(next(head_iter))
+                return result("bump: release")
+            if args[0] == "diff":
+                return result("scripts/evil.py" if bad_paths else ".cz.toml\npackage.json\nCHANGELOG.md\n")
             if args[:2] == ("push", "--atomic"):
-                self.assertFalse(check)
-                return result(code=next(pushes))
+                return result(code=1 if rejected else 0)
             if args[:2] == ("push", "origin") and major_fails:
                 raise subprocess.CalledProcessError(1, args)
-            if args[0] == "ls-remote":
-                return result("a" * 40 + "\trefs/tags/v0.4.0\n" if remote_tag else "")
-            if args[0] == "rev-parse":
-                return result("b" * 40 if mismatched and args[1] == "HEAD" else "a" * 40)
             return result()
 
-        def run_bump():
-            self.commands.append(("cz-bump",))
-            return next(tag_iter)
+        with patch.object(bump, "clean_git", side_effect=clean_git), patch.object(bump, "run_bump") as cz:
+            status = bump.publish(Path("release.bundle"), tag, "trusted-remote", "app-token")
+            cz.assert_not_called()
+            return status
 
-        with patch.object(bump, "git", side_effect=git), \
-             patch.object(bump, "run_bump", side_effect=run_bump) as run, \
-             patch.object(bump, "current_tag", return_value="v0.4.0"):
-            bump.release("app-token")
-            return run.call_count
+    def test_fresh_clone_atomic_push_and_only_major_tag_forced(self):
+        for tag, major in (("v0.4.0", "v0"), ("v1.2.3", "v1")):
+            self.assertEqual(self.exercise(tag=tag), 0)
+            self.assertEqual(self.commands[0][:5], ("clone", "--bare", "--no-local", "--template=", "trusted-remote"))
+            self.assertEqual([args for args in self.commands if args[0] == "push"], [
+                ("push", "--atomic", "origin", "main", f"refs/tags/{tag}"),
+                ("push", "origin", f"+refs/tags/{major}:refs/tags/{major}"),
+            ])
 
-    def test_release_pushes_main_and_tag_atomically_then_moves_major(self):
-        self.assertEqual(self.exercise(), 1)
-        pushes = [args for args in self.commands if args[0] == "push"]
-        self.assertEqual(pushes, [
-            ("push", "--atomic", "origin", "main", "refs/tags/v0.4.0"),
-            ("push", "origin", "+refs/tags/v0:refs/tags/v0"),
-        ])
-
-    def test_no_increment_skips_all_pushes(self):
-        self.exercise(tags=(None,))
+    def test_rejection_or_advanced_main_requests_fresh_preparation(self):
+        self.assertEqual(self.exercise(rejected=True), 75)
+        self.assertFalse(any(args[:2] == ("push", "origin") for args in self.commands))
+        self.assertEqual(self.exercise(advanced=True), 75)
         self.assertFalse(any(args[0] == "push" for args in self.commands))
 
-    def test_rejected_push_resets_deletes_tag_and_rebumps(self):
-        count = self.exercise(push_codes=(1, 0), tags=("v0.4.0", "v0.5.0"), heads=("feat: one", "feat: two"))
-        self.assertEqual(count, 2)
-        reset = self.commands.index(("reset", "--hard", "origin/main"))
-        deleted = self.commands.index(("tag", "--delete", "v0.4.0"))
-        second_bump = self.commands.index(("cz-bump",), self.commands.index(("cz-bump",)) + 1)
-        self.assertLess(reset, deleted)
-        self.assertLess(deleted, second_bump)
-        self.assertIn(("push", "--atomic", "origin", "main", "refs/tags/v0.5.0"), self.commands)
-        self.assertFalse(any("pull" in args or "--tags" in args and args[0] == "push" for args in self.commands))
-
-    def test_repeated_rejections_fail_the_job(self):
-        with self.assertRaisesRegex(RuntimeError, "after 3 attempts"):
-            self.exercise(push_codes=(1, 1, 1), tags=("v0.4.0",) * 3, heads=("fix: update",) * 3)
-        self.assertEqual(self.commands.count(("reset", "--hard", "origin/main")), 2)
-
-    def test_major_push_failure_fails_without_repeating_the_release(self):
+    def test_major_push_failure_fails_the_job(self):
         with self.assertRaises(subprocess.CalledProcessError):
             self.exercise(major_fails=True)
-        self.assertEqual(self.commands.count(("cz-bump",)), 1)
 
-    def test_rerun_repairs_major_without_bumping_or_retagging_semver(self):
-        self.assertEqual(self.exercise(heads=("bump: gha-keycard-auth 0.3.0 → 0.4.0",)), 0)
-        self.assertNotIn(("cz-bump",), self.commands)
-        self.assertEqual([args for args in self.commands if args[0] == "push"], [
-            ("push", "origin", "+refs/tags/v0:refs/tags/v0"),
-        ])
+    def test_prepared_checkout_cannot_supply_executable_files_or_move_semver(self):
+        for kwargs in ({"bad_paths": True}, {"existing": "other"}, {"bad_tag": True}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(RuntimeError):
+                self.exercise(**kwargs)
+            self.assertFalse(any(args[0] == "push" for args in self.commands))
 
-    def test_retry_recovers_a_push_that_reached_the_server(self):
-        count = self.exercise(push_codes=(1,), heads=("feat: update", "bump: 0.3.0 → 0.4.0"), remote_tag=True)
-        self.assertEqual(count, 1)
-        self.assertIn(("fetch", "origin", "refs/tags/v0.4.0:refs/tags/v0.4.0"), self.commands)
-
-    def test_dirty_checkout_is_never_reset(self):
-        with self.assertRaisesRegex(RuntimeError, "clean checkout"):
-            self.exercise(dirty=True)
-        self.assertEqual(self.commands, [("status", "--porcelain")])
-
-    def test_git_errors_stop_the_release(self):
-        for command in ("fetch", "switch", "merge", "reset"):
-            with self.subTest(command=command), self.assertRaises(subprocess.CalledProcessError):
-                self.exercise(push_codes=(1,), command_fails=command)
-
-    def test_existing_semver_tag_cannot_be_moved(self):
-        with self.assertRaisesRegex(RuntimeError, "does not point to the bump commit"):
-            self.exercise(heads=("bump: 0.3.0 → 0.4.0",), mismatched=True)
-        self.assertFalse(any(args[0] == "push" for args in self.commands))
+    def test_invalid_tag_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.exercise(tag="../main")
 
 
 if __name__ == "__main__":
