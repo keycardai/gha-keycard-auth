@@ -35,6 +35,9 @@ steps:
   - run: flyctl deploy
 ```
 
+Set `KEYCARD_CLIENT_ID` for the Quickstart and Pulumi examples.
+An empty `client-id` counts as omitted and falls back to legacy matching.
+
 For credentials that need to be on disk (e.g. a PEM private key), use `type: file`:
 
 ```yaml
@@ -88,8 +91,8 @@ Providers ship inside this action — there is no runtime plugin mechanism. See 
 | Input | Required | Description |
 |---|---|---|
 | `zone-url` | yes | Base URL of the Keycard Zone. |
-| `audience` | no | Audience for the GHA OIDC token. Accepts any string. Must equal the credential's `allowed_audience`. When omitted, defaults to the Zone issuer (`zone-url`, for example `https://<zone-id>.keycard.cloud`). |
-| `client-id` | no | Client ID of the workload identity credential. Omit only for [legacy credentials](#legacy-credentials). Whitespace within the value is not allowed. |
+| `audience` | no | Audience for the GHA OIDC token. Accepts any string. For a workload identity credential, must match `allowed_audience` if set, or the Zone issuer otherwise. Legacy credentials do not enforce `allowed_audience`. When omitted, defaults to the Zone issuer (`zone-url`, for example `https://<zone-id>.keycard.cloud`). |
+| `client-id` | no | Client ID of the workload identity credential. Omit only for [legacy credentials](#legacy-credentials). An empty value counts as omitted and selects legacy matching. Whitespace within the value is not allowed. |
 | `credentials` | yes | YAML list of credential specs (see below). |
 
 ### Workload identity credentials
@@ -97,7 +100,8 @@ Providers ship inside this action — there is no runtime plugin mechanism. See 
 For a workload identity credential, set `client-id`.
 The optional `audience` defaults to the Zone issuer.
 A custom value can be any string, not just a Zone URL.
-It must match the credential's `allowed_audience`.
+If the credential sets `allowed_audience`, the audience must match it.
+Otherwise, Keycard requires the Zone issuer.
 Do not use GitHub's default `https://github.com/<owner>` audience, because other
 services that receive those tokens could replay them.
 
@@ -133,6 +137,10 @@ steps:
 
 Keycard matches legacy credentials by Provider issuer and OIDC subject.
 Omit `client-id` for these credentials.
+An empty `client-id` also selects legacy matching.
+Set `KEYCARD_CLIENT_ID` in the examples to avoid that fallback.
+Legacy credentials do not enforce `allowed_audience`.
+Omit `audience` to request the Zone issuer.
 
 ## Setup
 
