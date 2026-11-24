@@ -11,7 +11,7 @@ inputs:
     description: Base URL of the Keycard zone (e.g., https://<id>.keycard.cloud).
     required: true
   audience:
-    description: Audience to request in the GHA OIDC token. Must match allowed_audience for v2 credentials. Defaults to zone-url.
+    description: Audience to request in the GHA OIDC token. Accepts any string. Must match allowed_audience for v2 credentials. When omitted, defaults to the zone issuer (zone-url, for example https://<zone-id>.keycard.cloud).
     required: false
   client-id:
     description: Client ID of a v2 workload identity credential. Omit for v1 credentials.

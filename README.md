@@ -86,7 +86,7 @@ Providers ship inside this action — there is no runtime plugin mechanism. See 
 | Input | Required | Description |
 |---|---|---|
 | `zone-url` | yes | Base URL of the Keycard zone. |
-| `audience` | no | Audience for the GHA OIDC token. Must equal the credential's `allowed_audience` for v2 credentials. Defaults to `zone-url`. |
+| `audience` | no | Audience for the GHA OIDC token. Accepts any string. Must equal the credential's `allowed_audience` for v2 credentials. When omitted, defaults to the zone issuer (`zone-url`, for example `https://<zone-id>.keycard.cloud`). |
 | `client-id` | no | Client ID of a v2 workload identity credential. Omit for v1 credentials. Whitespace within the value is not allowed. |
 | `credentials` | yes | YAML list of credential specs (see below). |
 
