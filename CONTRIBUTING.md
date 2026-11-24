@@ -15,6 +15,7 @@ You need:
 
 - Node.js **24.x** (matches the `node24` action runtime).
 - `npm` 10+.
+- Bash 4.4+ and jq 1.6+ for the acceptance helper tests in `npm test`.
 
 ```sh
 git clone git@github.com:keycardai/gha-keycard-auth.git
@@ -25,6 +26,33 @@ npm install
 Note: `package.json` sets `"private": true`. The action is distributed by
 referencing the GitHub repo + SHA, not by publishing to npm, so the private
 flag prevents accidental `npm publish` while keeping the repo public.
+
+## Acceptance tests
+
+The `Acceptance tests` workflow needs the `KEYCARD_CLIENT_ID` and
+`KEYCARD_CLIENT_SECRET` secrets for a service account with Management API access
+to zone `fdqsqy07r9m1t80d7ipejmtpw4`. The workflow sets `KEYCARD_ENDPOINT` to
+`https://api.keycard.ai` and `KEYCARD_ZONE_ID` to that zone ID. Local runs can
+override `KEYCARD_ENDPOINT`, which defaults to `https://api.keycard.ai`, and must
+set `KEYCARD_ZONE_ID`. Authentication sends client credentials in the form body
+to `/service-account-token`. Management API paths start at the endpoint root.
+
+`bash acceptance/zone.sh up` reuses an existing GitHub OIDC provider read-only or
+creates one if missing. It reuses one marked fixed-identifier application and
+resource for v1, with a dependency and one v1 credential. Setup refuses duplicate
+v1 credentials for the issuer and subject. It also creates a marked application
+and resource for each run ID and attempt, with a dependency and two v2 credentials.
+Local runs use a timestamp suffix. `zone.sh down` deletes this run's fixtures,
+including partial setups. It reads the state file set by `KEYCARD_STATE_FILE`,
+which defaults to `$RUNNER_TEMP/keycard-acceptance-$KEYCARD_ZONE_ID.json` or the
+same filename under `$HOME` outside Actions.
+The workflow runs `zone.sh sweep` before setup and always runs cleanup after
+setup starts. Sweep deletes marked acceptance applications and resources older
+than one hour, including leftovers from earlier designs. Cleanup and sweep never
+delete the stable v1 fixture, Providers, or unmarked objects.
+The workflow checks a v1 exchange with the default audience.
+Fork pull requests skip these tests. Dependabot pull requests also need
+`KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET` set as Dependabot secrets.
 
 ## Common commands
 
