@@ -50,6 +50,23 @@ test("items follows pagination", () => {
   assert.deepEqual(JSON.parse(result.stdout), [{ id: "first" }, { id: "second" }]);
 });
 
+test("items merges pages and accumulated inventories larger than an argv entry", () => {
+  const result = run(`
+    api() {
+      if [[ $2 == *'after=next'* ]]; then
+        jq -nc '{items:[{id:"second",description:("x" * 200000)}],page_info:{has_next_page:false}}'
+      else
+        jq -nc '{items:[{id:"first",description:("x" * 200000)}],page_info:{has_next_page:true,end_cursor:"next"}}'
+      fi
+    }
+    items /fixtures
+  `);
+  assert.equal(result.status, 0, result.stderr);
+  const items = JSON.parse(result.stdout);
+  assert.deepEqual(items.map((item) => item.id), ["first", "second"]);
+  assert.ok(items.every((item) => item.description.length === 200000));
+});
+
 test("credentials create v2 fixtures and omit the default audience", () => {
   for (const audience of ["", "https://github.com/keycardai/gha-keycard-auth"]) {
     const result = run(`
