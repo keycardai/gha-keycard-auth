@@ -38,7 +38,7 @@ items() {
   local path=$1 page cursor='' all='[]'
   while :; do
     page=$(api GET "$path?limit=100${cursor:+&after=$cursor}")
-    all=$(jq -nc --argjson a "$all" --argjson p "$page" '$a + $p.items')
+    all=$(printf '%s\n' "$all" "$page" | jq -sc '.[0] + .[1].items')
     [[ $(jq -r '.page_info.has_next_page // false' <<<"$page") == true ]] || break
     cursor=$(jq -er '.page_info.end_cursor | select(type == "string" and length > 0) | @uri' <<<"$page")
   done
