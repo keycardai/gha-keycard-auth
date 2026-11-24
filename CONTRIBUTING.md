@@ -44,7 +44,8 @@ zone. It only changes objects it owns and reuses existing Providers read-only.
 It adopts earlier acceptance Applications and Resources only when their exact
 identifier and name match and their description is empty. Fixtures persist
 between runs. The workflow checks a version 1 exchange with the default audience.
-Fork and Dependabot pull requests skip these tests.
+Fork pull requests skip these tests. Dependabot pull requests also need
+`KEYCARD_CLIENT_ID` and `KEYCARD_CLIENT_SECRET` set as Dependabot secrets.
 
 ## Common commands
 
