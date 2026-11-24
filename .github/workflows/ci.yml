@@ -32,6 +32,13 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install release test dependencies
+        run: python3 -m pip install commitizen==4.19.2
+
       - name: Test release scripts
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 

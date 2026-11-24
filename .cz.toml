@@ -9,9 +9,16 @@ major_version_zero = true
 
 [tool.commitizen.customize]
 changelog_pattern = '^((feat|fix|refactor|perf|test|build|ci|revert)(\(.+\))?|chore\(deps\))(!)?:'
+bump_pattern = '^((BREAKING[- ]CHANGE|\w+)(\(.+\))?!?):'
 
 [tool.commitizen.customize.bump_map]
 '^.+!$' = "MAJOR"
 '^BREAKING[- ]CHANGE' = "MAJOR"
+'^feat' = "MINOR"
+'^fix' = "PATCH"
+
+[tool.commitizen.customize.bump_map_major_version_zero]
+'^.+!$' = "MINOR"
+'^BREAKING[- ]CHANGE' = "MINOR"
 '^feat' = "MINOR"
 '^fix' = "PATCH"

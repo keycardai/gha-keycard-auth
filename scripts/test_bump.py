@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import tomllib
 import unittest
 from unittest.mock import patch
@@ -128,6 +129,50 @@ class BumpTests(unittest.TestCase):
     def test_only_pushes_may_receive_the_token(self):
         with self.assertRaises(ValueError):
             bump.clean_git("fetch", "origin", "main", token="app-token")
+
+
+class RealCommitizenTests(unittest.TestCase):
+    def fixture(self, directory):
+        repo = Path(directory)
+        env = {key: value for key, value in os.environ.items() if key not in ("GH_TOKEN", "GITHUB_TOKEN")}
+        env.update(GIT_AUTHOR_NAME="Release fixture", GIT_AUTHOR_EMAIL="fixture@example.com",
+                   GIT_COMMITTER_NAME="Release fixture", GIT_COMMITTER_EMAIL="fixture@example.com",
+                   GIT_CONFIG_COUNT="2", GIT_CONFIG_KEY_0="commit.gpgsign", GIT_CONFIG_VALUE_0="false",
+                   GIT_CONFIG_KEY_1="tag.gpgsign", GIT_CONFIG_VALUE_1="false")
+
+        def run(*cmd, check=True):
+            return subprocess.run(cmd, cwd=repo, env=env, capture_output=True, text=True, check=check)
+
+        self.assertEqual(run("cz", "version").stdout.strip(), "4.19.2")
+        run("git", "init", "--initial-branch=main")
+        source = Path(__file__).parent.parent
+        (repo / ".cz.toml").write_text((source / ".cz.toml").read_text())
+        (repo / "package.json").write_text('{"version":"0.3.0"}\n')
+        (repo / "CHANGELOG.md").write_text("## v0.3.0\n\n- Existing history\n")
+        run("git", "add", ".cz.toml", "package.json", "CHANGELOG.md")
+        run("git", "commit", "-m", "release: fixture")
+        run("git", "tag", "v0.3.0")
+        return repo, run
+
+    def commit(self, repo, run, subject):
+        (repo / "fixture.txt").write_text(subject)
+        run("git", "add", "fixture.txt")
+        run("git", "commit", "-m", subject)
+
+    def test_real_zero_major_increments(self):
+        cases = [
+            ("feat(oauth): add support", "0.4.0"), ("fix: repair support", "0.3.1"),
+            ("perf!: break support", "0.4.0"), ("ci: checks\n\nBREAKING CHANGE: change support", "0.4.0"),
+            *((f"{kind}: tidy", None) for kind in ("ci", "test", "build", "refactor", "perf", "revert", "chore(deps)")),
+        ]
+        for subject, expected in cases:
+            with self.subTest(subject=subject), tempfile.TemporaryDirectory() as directory:
+                repo, run = self.fixture(directory)
+                self.commit(repo, run, subject)
+                computed = run("cz", "bump", "--get-next", check=False)
+                self.assertEqual(computed.returncode, 21 if expected is None else 0, computed.stderr)
+                if expected is not None:
+                    self.assertEqual(computed.stdout.strip(), expected)
 
 
 class PrepareTests(unittest.TestCase):
