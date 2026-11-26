@@ -115,9 +115,12 @@ class BumpTests(unittest.TestCase):
         config = tomllib.loads((Path(__file__).parent.parent / ".cz.toml").read_text())
         customize = config["tool"]["commitizen"]["customize"]
         pattern = customize["changelog_pattern"]
-        for subject in ("chore(deps): bump runtime", "chore(deps)!: bump runtime", "feat(oauth): support v2"):
+        for subject in ("chore(deps): bump runtime", "chore(deps)!: bump runtime", "feat(oauth): support v2",
+                        "chore!: x", "style(format)!: x", "docs: x\n\nBREAKING CHANGE: x",
+                        "docs: x\n\nBREAKING-CHANGE: x"):
             self.assertIsNotNone(re.match(pattern, subject))
-        for subject in ("chore: tidy", "chore(dev): tidy", "chore(deps-dev): bump tools"):
+        for subject in ("chore: tidy", "chore(dev): tidy", "chore(deps-dev): bump tools",
+                        "docs: tidy", "style(format): tidy", "docs: mention BREAKING CHANGE: inline"):
             self.assertIsNone(re.match(pattern, subject))
         mapping = customize["bump_map"]
         for prefix, expected in [
@@ -207,6 +210,17 @@ class RealCommitizenTests(unittest.TestCase):
                 self.assertEqual(computed.returncode, 21 if expected is None else 0, computed.stderr)
                 if expected is not None:
                     self.assertEqual(computed.stdout.strip(), expected)
+
+    def test_real_breaking_changes_have_changelog_entries(self):
+        for subject in ("chore!: x", "style(format)!: x", "docs: x\n\nBREAKING CHANGE: x",
+                        "docs: x\n\nBREAKING-CHANGE: x"):
+            with self.subTest(subject=subject), tempfile.TemporaryDirectory() as directory:
+                repo, run = self.fixture(directory)
+                self.commit(repo, run, subject)
+                run("cz", "bump", "--changelog", "--yes")
+                changelog = (repo / "CHANGELOG.md").read_text()
+                section = changelog.split("## v0.4.0", 1)[1].split("## v0.3.0", 1)[0]
+                self.assertRegex(section, r"(?m)^- .*x")
 
     def test_real_changelog_preserves_history_without_duplication(self):
         source = (Path(__file__).parent.parent / "CHANGELOG.md").read_text()

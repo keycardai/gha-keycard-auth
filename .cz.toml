@@ -8,7 +8,7 @@ bump_message = "bump: gha-keycard-auth $current_version → $new_version"
 major_version_zero = true
 
 [tool.commitizen.customize]
-changelog_pattern = '^((feat|fix|refactor|perf|test|build|ci|revert)(\(.+\))?|chore\(deps\))(!)?:'
+changelog_pattern = '^(?:((feat|fix|refactor|perf|test|build|ci|revert)(\(.+\))?|chore\(deps\))!?:|\w+(\(.+\))?!:|(?s:.*\nBREAKING[- ]CHANGE:))'
 bump_pattern = '^((BREAKING[- ]CHANGE|\w+)(\(.+\))?!?):'
 
 [tool.commitizen.customize.bump_map]
