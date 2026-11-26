@@ -132,6 +132,30 @@ class BumpTests(unittest.TestCase):
             bump.git("fetch", "origin", "main", token="app-token")
 
 
+class PublishTests(unittest.TestCase):
+    def test_release_notes_come_from_the_tagged_changelog_section(self):
+        changelog = "# Changelog\n\n## v0.4.0 (2026-11-26)\n\n### Feat\n\n- add input\n\n## v0.3.0 (2026-05-26)\n\n- old\n"
+        with tempfile.TemporaryDirectory() as directory, patch.object(bump, "Path", lambda name: Path(directory) / name):
+            (Path(directory) / "CHANGELOG.md").write_text(changelog)
+            self.assertEqual(bump.release_notes("v0.4.0"), "### Feat\n\n- add input")
+            self.assertEqual(bump.release_notes("v0.3.0"), "- old")
+            self.assertEqual(bump.release_notes("v9.9.9"), "")
+
+    def test_publish_creates_a_release_with_the_token(self):
+        with patch.object(bump, "run_command", side_effect=[result(code=1), result()]) as run, \
+             patch.object(bump, "release_notes", return_value="notes"):
+            bump.publish_release("v0.4.0", "app-token")
+        view, create = run.call_args_list
+        self.assertEqual(view.args[0], ["gh", "release", "view", "v0.4.0"])
+        self.assertEqual(create.args[0][:6], ["gh", "release", "create", "v0.4.0", "--verify-tag", "--title"])
+        self.assertTrue(all(call.kwargs["token"] == "app-token" for call in run.call_args_list))
+
+    def test_publish_skips_an_existing_release(self):
+        with patch.object(bump, "run_command", return_value=result()) as run:
+            bump.publish_release("v0.4.0", "app-token")
+        run.assert_called_once()
+
+
 class RealCommitizenTests(unittest.TestCase):
     def fixture(self, directory, history=None):
         repo = Path(directory)
@@ -228,8 +252,10 @@ class ReleaseTests(unittest.TestCase):
 
         with patch.object(bump, "git", side_effect=git), \
              patch.object(bump, "run_bump", return_value=tag) as cz, \
-             patch.object(bump, "current_tag", return_value=tag):
+             patch.object(bump, "current_tag", return_value=tag), \
+             patch.object(bump, "publish_release") as publish:
             self.cz = cz
+            self.publish = publish
             bump.release("app-token")
 
     def test_atomic_push_and_only_major_tag_forced(self):
@@ -240,8 +266,18 @@ class ReleaseTests(unittest.TestCase):
                 ("push", "origin", f"+refs/tags/{major}:refs/tags/{major}"),
             ])
 
+    def test_successful_release_publishes_a_github_release(self):
+        self.exercise()
+        self.publish.assert_called_once_with("v0.4.0", "app-token")
+
+    def test_failed_major_push_does_not_publish(self):
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.exercise(major_fails=True)
+        self.publish.assert_not_called()
+
     def test_clean_skip_does_not_push(self):
         self.exercise(tag=None)
+        self.publish.assert_not_called()
         self.cz.assert_called_once_with()
         self.assertFalse(any(args[0] == "push" for args in self.commands))
 
@@ -273,6 +309,7 @@ class ReleaseTests(unittest.TestCase):
     def test_existing_bump_repairs_only_the_major_tag(self):
         self.exercise(head="bump: release")
         self.cz.assert_not_called()
+        self.publish.assert_called_once_with("v0.4.0", "app-token")
         self.assertEqual([args for args in self.commands if args[0] == "push"], [
             ("push", "origin", "+refs/tags/v0:refs/tags/v0"),
         ])

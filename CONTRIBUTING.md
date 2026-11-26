@@ -229,8 +229,11 @@ The script deletes the local release tag and reruns the bump, up to three attemp
 If all attempts fail, the job fails. Semver tags never move.
 Each release also moves its major tag, such as `v0` or `v1`, to the release commit.
 Only that tag uses a forced push. If that push fails, the job fails.
+After the tags land, the job publishes a GitHub release for the `vX.Y.Z` tag
+with that version's `CHANGELOG.md` section as the notes. It skips the release
+if one already exists, so a rerun can repair a missing release.
 Protect only `v*.*.*` tags. Keep major tags such as `v0` movable.
-If `main` still ends at the bump commit, rerun the job to repair its major tag.
+If `main` still ends at the bump commit, rerun the job to repair its major tag and release.
 Set `vars.SDK_RELEASE_APP_ID` and `secrets.SDK_RELEASE_PRIVATE_KEY` for the App.
 It needs Contents write access, Workflows read and write access, and a bypass for the `main` ruleset.
 

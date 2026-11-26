@@ -1,6 +1,6 @@
 # gha-keycard-auth
 
-[![Version](https://img.shields.io/github/v/tag/keycardai/gha-keycard-auth?label=version)](https://github.com/keycardai/gha-keycard-auth/tags)
+[![Release](https://img.shields.io/github/v/release/keycardai/gha-keycard-auth?label=release)](https://github.com/keycardai/gha-keycard-auth/releases/latest)
 [![CI](https://github.com/keycardai/gha-keycard-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/keycardai/gha-keycard-auth/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/keycardai/gha-keycard-auth/actions/workflows/codeql.yml/badge.svg)](https://github.com/keycardai/gha-keycard-auth/actions/workflows/codeql.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](./LICENSE)

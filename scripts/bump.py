@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import tomllib
 
 
@@ -63,6 +64,23 @@ def move_major_tag(tag: str, token: str) -> None:
     git("push", "origin", f"+refs/tags/{major}:refs/tags/{major}", token=token)
 
 
+def release_notes(tag: str) -> str:
+    changelog = Path("CHANGELOG.md").read_text()
+    match = re.search(rf"(?ms)^## {re.escape(tag)}(?:\s[^\n]*)?\n(.*?)(?=^## |\Z)", changelog)
+    return match.group(1).strip() if match else ""
+
+
+def publish_release(tag: str, token: str) -> None:
+    if run_command(["gh", "release", "view", tag], token=token, check=False).returncode == 0:
+        print(f"GitHub release {tag} already exists.")
+        return
+    with tempfile.NamedTemporaryFile("w", suffix=".md") as notes:
+        notes.write(release_notes(tag) or f"Release {tag}.")
+        notes.flush()
+        run_command(["gh", "release", "create", tag, "--verify-tag", "--title", tag,
+                     "--notes-file", notes.name], token=token)
+
+
 def release(token: str, max_attempts: int = 3) -> None:
     if git("status", "--porcelain").stdout.strip():
         raise RuntimeError("Release requires a clean checkout")
@@ -81,6 +99,7 @@ def release(token: str, max_attempts: int = 3) -> None:
             if tagged_sha != sha:
                 raise RuntimeError(f"{tag} does not point to the bump commit")
             move_major_tag(tag, token)
+            publish_release(tag, token)
             return
 
         tag = run_bump()
@@ -89,6 +108,7 @@ def release(token: str, max_attempts: int = 3) -> None:
         pushed = git("push", "--atomic", "origin", "main", f"refs/tags/{tag}", token=token, check=False)
         if pushed.returncode == 0:
             move_major_tag(tag, token)
+            publish_release(tag, token)
             return
         if attempt == max_attempts:
             raise RuntimeError(f"Could not push release after {max_attempts} attempts")
