@@ -141,6 +141,12 @@ class PublishTests(unittest.TestCase):
             self.assertEqual(bump.release_notes("v0.3.0"), "- old")
             self.assertEqual(bump.release_notes("v9.9.9"), "")
 
+    def test_release_notes_keep_body_headings(self):
+        changelog = "## v0.4.0 (2026-11-26)\n\n- add input\n\n## Migration\n\n- set client-id\n\n## v0.3.0 (2026-05-26)\n\n- old\n"
+        with tempfile.TemporaryDirectory() as directory, patch.object(bump, "Path", lambda name: Path(directory) / name):
+            (Path(directory) / "CHANGELOG.md").write_text(changelog)
+            self.assertEqual(bump.release_notes("v0.4.0"), "- add input\n\n## Migration\n\n- set client-id")
+
     def test_publish_creates_a_release_with_the_token(self):
         with patch.object(bump, "run_command", side_effect=[result(code=1), result()]) as run, \
              patch.object(bump, "release_notes", return_value="notes"):

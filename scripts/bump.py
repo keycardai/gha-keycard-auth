@@ -66,7 +66,7 @@ def move_major_tag(tag: str, token: str) -> None:
 
 def release_notes(tag: str) -> str:
     changelog = Path("CHANGELOG.md").read_text()
-    match = re.search(rf"(?ms)^## {re.escape(tag)}(?:\s[^\n]*)?\n(.*?)(?=^## |\Z)", changelog)
+    match = re.search(rf"(?ms)^## {re.escape(tag)}(?:\s[^\n]*)?\n(.*?)(?=^## v\d|\Z)", changelog)
     return match.group(1).strip() if match else ""
 
 
