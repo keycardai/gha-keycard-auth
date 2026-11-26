@@ -202,18 +202,54 @@ write code.
 - Keep PRs focused — one concern per PR makes review and bisect easier.
 - The PR description should answer: **what changed**, **why**, **how it was
   tested**, and (for security-relevant changes) **what threat this addresses**.
-- Update `CHANGELOG.md` under `## [Unreleased]` for any user-visible change.
+- Commitizen generates `CHANGELOG.md` from commits. Do not add manual entries.
 
 ## Releases
 
-Releases are tagged from `main` after CI passes.
-Update `package.json` and `CHANGELOG.md`, then tag the commit
-`v<MAJOR>.<MINOR>.<PATCH>`.
+Pushes to `main` run `.github/workflows/main.yml`, unless the head commit
+starts with `bump:`. One job installs Commitizen 4.19.2 from
+`scripts/requirements-release.txt` with `--require-hashes --no-deps`.
+CI uses the same file for release tests. The job runs `python scripts/bump.py`.
+Checkout does not persist credentials. Only Git push subprocesses receive
+the SDK Release App token. Those pushes disable hooks and clear credential
+helpers before using `gh auth git-credential`.
+Commitizen runs without the token in its environment. This is not a sandbox.
+Release tools share the job and can inspect parent processes.
+The hash lock fixes the reviewed artifacts, not their behavior.
+Commitizen updates `.cz.toml`, `package.json`, and `CHANGELOG.md` from commits.
+Its pre-bump hook updates and stages only the root versions in `package-lock.json`.
+The bump commit includes the lockfile.
+`feat` and `fix` commits increment the version. Breaking changes also increment it.
+A `chore(deps)` commit that changes `dist/` triggers a PATCH release.
+Those dependency commits appear in the changelog. Other dependency updates skip.
+Commits without an increment skip cleanly, including `ci`, `test`, `build`,
+`refactor`, `perf`, and `revert` commits without a breaking change.
 
-During the `0.x` line, only immutable release tags (`v0.1.0`, `v0.2.0`, …)
-are published — no moving major or minor tags, since 0.x explicitly allows
-breaking changes between minor versions. Consumers SHA-pin and Dependabot or
-Renovate keeps the pin fresh.
+The script pushes the bump commit and its `vX.Y.Z` tag atomically.
+A rejected push resets the checkout to the latest `origin/main`.
+The script deletes the local release tag and reruns the bump, up to three attempts.
+If all attempts fail, the job fails. Semver tags never move.
+Each release also moves its major tag, such as `v0` or `v1`, to the release commit.
+Only that tag uses a forced push. If that push fails, the job fails.
+After the tags land, the job publishes a GitHub release for the `vX.Y.Z` tag
+with that version's `CHANGELOG.md` section as the notes. It skips the release
+if one already exists, so a rerun can repair a missing release.
+Protect only `v*.*.*` tags. Keep major tags such as `v0` movable.
+If `main` still ends at the bump commit, rerun the job to repair its major tag and release.
+Set `vars.SDK_RELEASE_APP_ID` and `secrets.SDK_RELEASE_PRIVATE_KEY` for the App.
+It needs Contents write access, Workflows read and write access, and a bypass for the `main` ruleset.
+
+Dependabot updates the pip requirements in `/scripts`.
+From `scripts/`, regenerate the lock with pip-tools 7.5.2 on Python 3.12 for Linux:
+
+```sh
+pip-compile --generate-hashes --strip-extras --no-emit-index-url --no-emit-trusted-host --output-file requirements-release.txt requirements-release.in
+```
+
+Breaking changes can land between minor versions during the `0.x` line.
+Consumers can use `@v0` to follow releases or pin a semver tag's commit SHA.
+SHA pinning is safer. Dependabot or Renovate updates the pin.
+Fetch tags, then run `git rev-parse 'v0.1.0^{commit}'` to resolve a tag's commit SHA.
 
 ## Questions
 

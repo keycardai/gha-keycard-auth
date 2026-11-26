@@ -154,13 +154,29 @@ See the [Keycard documentation](https://docs.keycard.ai) for console and Terrafo
 
 ## Pinning
 
-This is a `0.x` release line — the API may change between minor versions. Pin to a 40-character commit SHA:
+This is a `0.x` release line. The API may change between minor versions.
+Use `@v0` to follow releases in the `0.x` line:
+
+```yaml
+uses: keycardai/gha-keycard-auth@v0
+```
+
+Pinning to the 40-character commit SHA of a `vX.Y.Z` tag is safer.
+The code stays fixed until the pin changes:
 
 ```yaml
 uses: keycardai/gha-keycard-auth@<40-char-sha>   # v0.1.0
 ```
 
-[Dependabot](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot) understands the `# v0.1.0` trailing comment and will open PRs to bump the SHA when a new release lands. To resolve the SHA for a given release manually, use `git rev-parse v0.1.0` or look up the release on GitHub.
+[Dependabot](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/keeping-your-actions-up-to-date-with-dependabot)
+uses the `# v0.1.0` comment to update the SHA when a new version tag lands.
+Fetch tags, then run `git rev-parse 'v0.1.0^{commit}'` to resolve a tag's commit SHA.
+
+A single release job installs Commitizen from a hash-locked requirements file.
+Checkout does not persist credentials. Only Git push subprocesses receive the
+App token. They disable hooks and use a controlled credential helper.
+Commitizen runs without the token in its environment. This is not a sandbox.
+Release tools share the job and can inspect parent processes.
 
 ## Contributing
 

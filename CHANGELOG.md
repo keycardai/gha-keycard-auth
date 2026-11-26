@@ -12,9 +12,7 @@ This is a 0.x release line — the API may change between minor versions per
 given release via its git tag, e.g. `git rev-parse v0.1.0`, or from the
 GitHub release page.
 
-## [Unreleased]
-
-## [0.3.0] - 2026-05-26
+## v0.3.0 (2026-05-26)
 
 ### Added
 
@@ -41,7 +39,7 @@ GitHub release page.
             organization: <org>
   ```
 
-## [0.2.0] - 2026-05-19
+## v0.2.0 (2026-05-19)
 
 ### Changed
 
@@ -50,7 +48,7 @@ GitHub release page.
   Node.js 20 runner is removed on 2026-09-16. Self-hosted runners must have
   Node.js 24 available before pinning to a SHA at or past this release.
 
-## [0.1.0] - 2026-05-15
+## v0.1.0 (2026-05-15)
 
 First public release.
 
@@ -94,7 +92,6 @@ Inline mitigation comments in `src/` document the threats this action
 defends against. CodeQL analysis runs on push, PR, and weekly. Vulnerability
 reports: security@keycard.ai (see `SECURITY.md`).
 
-[Unreleased]: https://github.com/keycardai/gha-keycard-auth/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.3.0
 [0.2.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.2.0
 [0.1.0]: https://github.com/keycardai/gha-keycard-auth/releases/tag/v0.1.0
