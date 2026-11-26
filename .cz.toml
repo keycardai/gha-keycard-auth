@@ -2,6 +2,7 @@
 name = "cz_customize"
 version = "0.3.0"
 version_files = ['package.json:"version"']
+pre_bump_hooks = ["python scripts/bump.py --update-lockfile"]
 tag_format = "v${version}"
 update_changelog_on_bump = true
 bump_message = "bump: gha-keycard-auth $current_version → $new_version"

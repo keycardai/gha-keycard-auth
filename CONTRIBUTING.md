@@ -217,6 +217,8 @@ Commitizen runs without the token in its environment. This is not a sandbox.
 Release tools share the job and can inspect parent processes.
 The hash lock fixes the reviewed artifacts, not their behavior.
 Commitizen updates `.cz.toml`, `package.json`, and `CHANGELOG.md` from commits.
+Its pre-bump hook updates and stages only the root versions in `package-lock.json`.
+The bump commit includes the lockfile.
 `feat` and `fix` commits increment the version. Breaking changes also increment it.
 A `chore(deps)` commit that changes `dist/` triggers a PATCH release.
 Those dependency commits appear in the changelog. Other dependency updates skip.

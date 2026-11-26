@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -49,6 +50,35 @@ class CommandTests(unittest.TestCase):
 
 
 class BumpTests(unittest.TestCase):
+    def test_lockfile_updates_only_root_versions_and_stages_it(self):
+        lockfile = {"version": "0.3.0", "packages": {
+            "": {"version": "0.3.0"}, "node_modules/example": {"version": "0.3.0"},
+        }, "dependencies": {"example": {"version": "0.3.0"}}}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(bump, "Path", lambda name: Path(directory) / name), \
+             patch.object(bump, "git") as git:
+            path = Path(directory) / "package-lock.json"
+            path.write_text(json.dumps(lockfile))
+            bump.update_lockfile("0.4.0")
+            lockfile["version"] = "0.4.0"
+            lockfile["packages"][""]["version"] = "0.4.0"
+            self.assertEqual(json.loads(path.read_text()), lockfile)
+            git.assert_called_once_with("add", "package-lock.json")
+
+    def test_invalid_lockfile_is_not_written_or_staged(self):
+        for content, error in ((None, FileNotFoundError), ("", json.JSONDecodeError), ("{}", KeyError)):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as directory, \
+                 patch.object(bump, "Path", lambda name: Path(directory) / name), \
+                 patch.object(bump, "git") as git:
+                path = Path(directory) / "package-lock.json"
+                if content is not None:
+                    path.write_text(content)
+                with self.assertRaises(error):
+                    bump.update_lockfile("0.4.0")
+                git.assert_not_called()
+                if content is not None:
+                    self.assertEqual(path.read_text(), content)
+
     def test_bump_and_clean_skips(self):
         for codes, deps, expected in [
             ([0], False, "v0.4.0"),
@@ -185,8 +215,14 @@ class RealCommitizenTests(unittest.TestCase):
         config = re.sub(r'(?m)^version = "[^"]+"$', 'version = "0.3.0"', (source / ".cz.toml").read_text())
         (repo / ".cz.toml").write_text(config)
         (repo / "package.json").write_text('{"version":"0.3.0"}\n')
+        (repo / "package-lock.json").write_text(json.dumps({
+            "version": "0.3.0", "lockfileVersion": 3,
+            "packages": {"": {"version": "0.3.0"}, "node_modules/example": {"version": "0.3.0"}},
+        }, indent=2) + "\n")
+        (repo / "scripts").mkdir()
+        (repo / "scripts/bump.py").write_text((source / "scripts/bump.py").read_text())
         (repo / "CHANGELOG.md").write_text(history or "## v0.3.0\n\n- Existing history\n")
-        run("git", "add", ".cz.toml", "package.json", "CHANGELOG.md")
+        run("git", "add", ".cz.toml", "package.json", "package-lock.json", "scripts/bump.py", "CHANGELOG.md")
         run("git", "commit", "-m", "release: fixture")
         run("git", "tag", "v0.3.0")
         return repo, run
@@ -210,6 +246,31 @@ class RealCommitizenTests(unittest.TestCase):
                 self.assertEqual(computed.returncode, 21 if expected is None else 0, computed.stderr)
                 if expected is not None:
                     self.assertEqual(computed.stdout.strip(), expected)
+
+    def test_real_bump_commits_root_lockfile_versions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, run = self.fixture(directory)
+            self.commit(repo, run, "feat: update support")
+            before = json.loads((repo / "package-lock.json").read_text())
+            run("cz", "bump", "--changelog", "--yes")
+            committed = json.loads(run("git", "show", "v0.4.0:package-lock.json").stdout)
+            before["version"] = "0.4.0"
+            before["packages"][""]["version"] = "0.4.0"
+            self.assertEqual(committed, before)
+            self.assertEqual(run("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD",
+                                 "--", "package-lock.json").stdout.strip(), "package-lock.json")
+            self.assertTrue(run("git", "log", "-1", "--format=%s").stdout.startswith("bump:"))
+            self.assertEqual(run("git", "status", "--porcelain").stdout, "")
+
+    def test_real_skip_leaves_lockfile_unchanged(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, run = self.fixture(directory)
+            self.commit(repo, run, "docs: clarify support")
+            before = (repo / "package-lock.json").read_text()
+            skipped = run("cz", "bump", "--changelog", "--yes", check=False)
+            self.assertEqual(skipped.returncode, 21)
+            self.assertEqual((repo / "package-lock.json").read_text(), before)
+            self.assertEqual(run("git", "status", "--porcelain").stdout, "")
 
     def test_real_breaking_changes_have_changelog_entries(self):
         for subject in ("chore!: x", "style(format)!: x", "docs: x\n\nBREAKING CHANGE: x",

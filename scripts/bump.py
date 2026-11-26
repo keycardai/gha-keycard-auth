@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Bump gha-keycard-auth and publish its version and major tags."""
 
+import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -33,6 +35,15 @@ def git(*args: str, token: str | None = None, check: bool = True) -> subprocess.
 def current_tag() -> str:
     config = tomllib.loads(Path(".cz.toml").read_text())
     return f"v{config['tool']['commitizen']['version']}"
+
+
+def update_lockfile(version: str) -> None:
+    path = Path("package-lock.json")
+    lockfile = json.loads(path.read_text())
+    lockfile["version"] = version
+    lockfile["packages"][""]["version"] = version
+    path.write_text(json.dumps(lockfile, indent=2) + "\n")
+    git("add", "package-lock.json")
 
 
 def dependency_dist_changed() -> bool:
@@ -123,7 +134,13 @@ def release(token: str, max_attempts: int = 3) -> None:
 
 
 def main() -> None:
-    release(os.environ["GH_TOKEN"])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--update-lockfile", action="store_true")
+    args = parser.parse_args()
+    if args.update_lockfile:
+        update_lockfile(os.environ["CZ_PRE_NEW_VERSION"])
+    else:
+        release(os.environ["GH_TOKEN"])
 
 
 if __name__ == "__main__":
